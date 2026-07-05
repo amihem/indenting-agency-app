@@ -194,5 +194,6 @@ export const statusColors = {
   confirmed: ["#E3EEFB", "#1D4E89"],
   partial_dispatch: ["#F0E7FB", "#5B3A94"],
   fulfilled: ["#E4F4EA", "#237A4B"],
+  closed: ["#E8E8E8", "#4A4A4A"],
   cancelled: ["#FBE6E4", "#A5301F"],
 };

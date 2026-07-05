@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
-import { indentValue, commissionForIndents } from "../lib/calc";
+import { computeInvoices, invoiceWithStatus } from "../lib/calc";
 import { printReport } from "../lib/print";
 
 function groupSum(list, keyFn, valueFn) {
@@ -72,36 +72,47 @@ function exportTable(title, columns, rows) {
 
 export default function ReportsTab({ data }) {
   const [section, setSection] = useState("sales");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
-  /* ---------- Sales reports ---------- */
-  const salesByBuyer = groupSum(data.indents, (i) => buyerName(i.buyerId), indentValue);
-  const salesByProduct = groupSum(data.indents, (i) => i.productName || "—", indentValue);
-  const salesByMill = groupSum(data.indents, (i) => millName(i.millId), indentValue);
+  let invoices = computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
+  if (fromDate) invoices = invoices.filter((i) => i.invoiceDate >= fromDate);
+  if (toDate) invoices = invoices.filter((i) => i.invoiceDate <= toDate);
 
-  /* ---------- Commission reports (FIFO realized/accrued) ---------- */
-  const allocations = commissionForIndents(data.indents, data.buyers, data.collections);
+  /* ---------- Sales reports (based on dispatched/invoiced value) ---------- */
+  const salesByBuyer = groupSum(invoices, (i) => buyerName(i.buyerId), (i) => i.value);
+  const salesByProduct = groupSum(invoices, (i) => i.productName || "—", (i) => i.value);
+  const salesByMill = groupSum(invoices, (i) => millName(i.millId), (i) => i.value);
 
+  /* ---------- Commission reports ---------- */
   const commissionByBuyer = {};
-  allocations.forEach((a) => {
-    const name = buyerName(a.indent.buyerId);
+  invoices.forEach((inv) => {
+    const name = buyerName(inv.buyerId);
     if (!commissionByBuyer[name]) commissionByBuyer[name] = { realized: 0, accrued: 0 };
-    commissionByBuyer[name].realized += a.commissionRealized;
-    commissionByBuyer[name].accrued += a.commissionAccrued;
+    commissionByBuyer[name].realized += inv.commissionRealized;
+    commissionByBuyer[name].accrued += inv.commissionAccrued;
   });
 
   const commissionByMill = {};
-  allocations.forEach((a) => {
-    const name = millName(a.indent.millId);
+  invoices.forEach((inv) => {
+    const name = millName(inv.millId);
     if (!commissionByMill[name]) commissionByMill[name] = { realized: 0, accrued: 0 };
-    commissionByMill[name].realized += a.commissionRealized;
-    commissionByMill[name].accrued += a.commissionAccrued;
+    commissionByMill[name].realized += inv.commissionRealized;
+    commissionByMill[name].accrued += inv.commissionAccrued;
   });
 
-  /* ---------- Collection by buyer ---------- */
-  const collectionByBuyer = groupSum(data.collections, (c) => buyerName(c.buyerId), (c) => Number(c.amount) || 0);
+  /* ---------- Collection by buyer (respecting date filter on collection date) ---------- */
+  let collections = data.collections;
+  if (fromDate) collections = collections.filter((c) => c.date >= fromDate);
+  if (toDate) collections = collections.filter((c) => c.date <= toDate);
+  const collectionByBuyer = groupSum(
+    collections,
+    (c) => buyerName(c.buyerId),
+    (c) => (c.allocations || []).reduce((s, a) => s + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0)
+  );
 
   const sections = [
     ["sales", "Sales Report"],
@@ -112,6 +123,18 @@ export default function ReportsTab({ data }) {
   return (
     <div>
       <div style={styles.h2}>Reports</div>
+
+      <div style={styles.row2}>
+        <div>
+          <label style={styles.label}>From Date</label>
+          <input style={styles.input} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label style={styles.label}>To Date</label>
+          <input style={styles.input} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 6, margin: "10px 0 16px" }}>
         {sections.map(([key, label]) => (
           <button
@@ -136,15 +159,11 @@ export default function ReportsTab({ data }) {
       {section === "sales" && (
         <>
           <ReportTable
-            title="Sales — Customer-wise"
+            title="Sales — Customer-wise (based on dispatched value)"
             columns={["Buyer", "Total Sales"]}
             rows={Object.entries(salesByBuyer).map(([name, val]) => [name, formatINR(val)])}
             onExport={() =>
-              exportTable(
-                "Sales Report — Customer-wise",
-                ["Buyer", "Total Sales"],
-                Object.entries(salesByBuyer).map(([name, val]) => [name, formatINR(val)])
-              )
+              exportTable("Sales Report — Customer-wise", ["Buyer", "Total Sales"], Object.entries(salesByBuyer).map(([n, v]) => [n, formatINR(v)]))
             }
           />
           <ReportTable
@@ -152,11 +171,7 @@ export default function ReportsTab({ data }) {
             columns={["Product", "Total Sales"]}
             rows={Object.entries(salesByProduct).map(([name, val]) => [name, formatINR(val)])}
             onExport={() =>
-              exportTable(
-                "Sales Report — Product-wise",
-                ["Product", "Total Sales"],
-                Object.entries(salesByProduct).map(([name, val]) => [name, formatINR(val)])
-              )
+              exportTable("Sales Report — Product-wise", ["Product", "Total Sales"], Object.entries(salesByProduct).map(([n, v]) => [n, formatINR(v)]))
             }
           />
           <ReportTable
@@ -164,11 +179,7 @@ export default function ReportsTab({ data }) {
             columns={["Mill", "Total Sales"]}
             rows={Object.entries(salesByMill).map(([name, val]) => [name, formatINR(val)])}
             onExport={() =>
-              exportTable(
-                "Sales Report — Supplier-wise",
-                ["Mill", "Total Sales"],
-                Object.entries(salesByMill).map(([name, val]) => [name, formatINR(val)])
-              )
+              exportTable("Sales Report — Supplier-wise", ["Mill", "Total Sales"], Object.entries(salesByMill).map(([n, v]) => [n, formatINR(v)]))
             }
           />
         </>
@@ -179,44 +190,24 @@ export default function ReportsTab({ data }) {
           <ReportTable
             title="Commission — Customer-wise"
             columns={["Buyer", "Realized", "Accrued (Pending)", "Total"]}
-            rows={Object.entries(commissionByBuyer).map(([name, v]) => [
-              name,
-              formatINR(v.realized),
-              formatINR(v.accrued),
-              formatINR(v.realized + v.accrued),
-            ])}
+            rows={Object.entries(commissionByBuyer).map(([name, v]) => [name, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])}
             onExport={() =>
               exportTable(
                 "Commission Report — Customer-wise",
                 ["Buyer", "Realized", "Accrued", "Total"],
-                Object.entries(commissionByBuyer).map(([name, v]) => [
-                  name,
-                  formatINR(v.realized),
-                  formatINR(v.accrued),
-                  formatINR(v.realized + v.accrued),
-                ])
+                Object.entries(commissionByBuyer).map(([n, v]) => [n, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])
               )
             }
           />
           <ReportTable
             title="Commission — Supplier (Mill) wise"
             columns={["Mill", "Realized", "Accrued (Pending)", "Total"]}
-            rows={Object.entries(commissionByMill).map(([name, v]) => [
-              name,
-              formatINR(v.realized),
-              formatINR(v.accrued),
-              formatINR(v.realized + v.accrued),
-            ])}
+            rows={Object.entries(commissionByMill).map(([name, v]) => [name, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])}
             onExport={() =>
               exportTable(
                 "Commission Report — Supplier-wise",
                 ["Mill", "Realized", "Accrued", "Total"],
-                Object.entries(commissionByMill).map(([name, v]) => [
-                  name,
-                  formatINR(v.realized),
-                  formatINR(v.accrued),
-                  formatINR(v.realized + v.accrued),
-                ])
+                Object.entries(commissionByMill).map(([n, v]) => [n, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])
               )
             }
           />
@@ -229,11 +220,7 @@ export default function ReportsTab({ data }) {
           columns={["Buyer", "Total Collected"]}
           rows={Object.entries(collectionByBuyer).map(([name, val]) => [name, formatINR(val)])}
           onExport={() =>
-            exportTable(
-              "Collection Report — Customer-wise",
-              ["Buyer", "Total Collected"],
-              Object.entries(collectionByBuyer).map(([name, val]) => [name, formatINR(val)])
-            )
+            exportTable("Collection Report — Customer-wise", ["Buyer", "Total Collected"], Object.entries(collectionByBuyer).map(([n, v]) => [n, formatINR(v)]))
           }
         />
       )}

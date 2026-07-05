@@ -2,36 +2,40 @@
 import React from "react";
 import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
-import { indentValue, commissionForIndents } from "../lib/calc";
+import { computeInvoices, invoiceWithStatus } from "../lib/calc";
 
 export default function Dashboard({ data }) {
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
-  const totalSale = data.indents.reduce((s, i) => s + indentValue(i), 0);
-  const totalCollection = data.collections.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+  const invoices = computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
 
-  const allocations = commissionForIndents(data.indents, data.buyers, data.collections);
-  const totalCommissionRealized = allocations.reduce((s, a) => s + a.commissionRealized, 0);
-  const totalCommissionAccrued = allocations.reduce((s, a) => s + a.commissionAccrued, 0);
+  const totalSale = invoices.reduce((s, i) => s + i.value, 0);
+  const totalCollection = data.collections.reduce(
+    (s, c) => s + (c.allocations || []).reduce((s2, a) => s2 + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0),
+    0
+  );
+  const totalCommissionRealized = invoices.reduce((s, i) => s + i.commissionRealized, 0);
+  const totalCommissionAccrued = invoices.reduce((s, i) => s + i.commissionAccrued, 0);
 
   const commissionByBuyer = {};
   const commissionByMill = {};
   const collectionByBuyer = {};
 
-  allocations.forEach((a) => {
-    const bName = buyerName(a.indent.buyerId);
-    const mName = millName(a.indent.millId);
-    commissionByBuyer[bName] = (commissionByBuyer[bName] || 0) + a.commissionRealized + a.commissionAccrued;
-    commissionByMill[mName] = (commissionByMill[mName] || 0) + a.commissionRealized + a.commissionAccrued;
+  invoices.forEach((inv) => {
+    const bName = buyerName(inv.buyerId);
+    const mName = millName(inv.millId);
+    commissionByBuyer[bName] = (commissionByBuyer[bName] || 0) + inv.commissionRealized + inv.commissionAccrued;
+    commissionByMill[mName] = (commissionByMill[mName] || 0) + inv.commissionRealized + inv.commissionAccrued;
   });
 
   data.collections.forEach((c) => {
     const bName = buyerName(c.buyerId);
-    collectionByBuyer[bName] = (collectionByBuyer[bName] || 0) + (Number(c.amount) || 0);
+    const amt = (c.allocations || []).reduce((s, a) => s + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0);
+    collectionByBuyer[bName] = (collectionByBuyer[bName] || 0) + amt;
   });
 
-  const pendingIndents = data.indents.filter((i) => i.status !== "fulfilled" && i.status !== "cancelled").length;
+  const pendingIndents = data.indents.filter((i) => !["fulfilled", "cancelled", "closed"].includes(i.status)).length;
 
   return (
     <div>
@@ -45,7 +49,7 @@ export default function Dashboard({ data }) {
           <div style={styles.statValue}>{pendingIndents}</div>
         </div>
         <div style={styles.statCard}>
-          <div style={styles.statLabel}>Total Sale</div>
+          <div style={styles.statLabel}>Total Sale (Dispatched)</div>
           <div style={styles.statValue}>{formatINR(totalSale)}</div>
         </div>
         <div style={styles.statCard}>
@@ -54,15 +58,11 @@ export default function Dashboard({ data }) {
         </div>
         <div style={{ ...styles.statCard, borderColor: colors.success }}>
           <div style={styles.statLabel}>Commission Realized</div>
-          <div style={{ ...styles.statValue, color: colors.success }}>
-            {formatINR(totalCommissionRealized)}
-          </div>
+          <div style={{ ...styles.statValue, color: colors.success }}>{formatINR(totalCommissionRealized)}</div>
         </div>
         <div style={{ ...styles.statCard, borderColor: colors.mustard }}>
           <div style={styles.statLabel}>Commission Accrued (Pending)</div>
-          <div style={{ ...styles.statValue, color: colors.mustard }}>
-            {formatINR(totalCommissionAccrued)}
-          </div>
+          <div style={{ ...styles.statValue, color: colors.mustard }}>{formatINR(totalCommissionAccrued)}</div>
         </div>
       </div>
 

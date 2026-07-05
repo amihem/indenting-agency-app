@@ -3,7 +3,7 @@
 // Uses the wa.me URL scheme — opens the WhatsApp app on mobile, WhatsApp Web on desktop.
 
 import { formatINR, formatDate } from "./storage";
-import { indentValue } from "./calc";
+import { indentOrderValue } from "./calc";
 
 function openWhatsApp(phone, text) {
   const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
@@ -12,7 +12,7 @@ function openWhatsApp(phone, text) {
 }
 
 export function shareIndent(indent, buyer, mill) {
-  const value = indentValue(indent);
+  const value = indentOrderValue(indent);
   const text =
     `*Indent ${indent.indentNumber}*\n` +
     `Date: ${formatDate(indent.date)}\n` +
@@ -21,7 +21,11 @@ export function shareIndent(indent, buyer, mill) {
     `Product: ${indent.productName}\n` +
     `Qty: ${indent.quantity} ${indent.unit}\n` +
     `Rate: ${formatINR(indent.rate)}\n` +
-    `Total Value: ${formatINR(value)}\n` +
+    `Order Value: ${formatINR(value)}\n` +
+    (indent.deliveryInstruction ? `Delivery Instruction: ${indent.deliveryInstruction}\n` : "") +
+    (indent.transport ? `Transport: ${indent.transport}\n` : "") +
+    (indent.packingInstruction ? `Packing Instruction: ${indent.packingInstruction}\n` : "") +
+    (indent.remark ? `Remark: ${indent.remark}\n` : "") +
     `Status: ${indent.status}`;
   openWhatsApp(buyer?.phone, text);
 }
@@ -29,26 +33,43 @@ export function shareIndent(indent, buyer, mill) {
 export function shareDispatch(indent, dispatch, buyer) {
   const text =
     `*Dispatch Update — Indent ${indent.indentNumber}*\n` +
-    `Date: ${formatDate(dispatch.date)}\n` +
+    `Dispatch Date: ${formatDate(dispatch.date)}\n` +
     `Product: ${indent.productName}\n` +
     `Qty Dispatched: ${dispatch.qty} ${indent.unit}\n` +
+    (dispatch.invoiceNumber ? `Mill Invoice No: ${dispatch.invoiceNumber}\n` : "") +
+    (dispatch.invoiceDate ? `Invoice Date: ${formatDate(dispatch.invoiceDate)}\n` : "") +
     (dispatch.lrNumber ? `LR Number: ${dispatch.lrNumber}\n` : "") +
-    (dispatch.transporter ? `Transporter: ${dispatch.transporter}\n` : "") +
-    (dispatch.invoiceNumber ? `Mill Invoice: ${dispatch.invoiceNumber}\n` : "");
+    (dispatch.lrDate ? `LR Date: ${formatDate(dispatch.lrDate)}\n` : "") +
+    (dispatch.transporter ? `Transporter: ${dispatch.transporter}\n` : "");
   openWhatsApp(buyer?.phone, text);
 }
 
-export function shareOutstanding(summary) {
-  const { buyer, totalSales, totalCollections, netOutstanding, ageingTotals } = summary;
-  let text =
-    `*Outstanding Statement — ${buyer.name}*\n` +
-    `As on: ${formatDate(new Date().toISOString())}\n\n` +
-    `Total Sales: ${formatINR(totalSales)}\n` +
-    `Total Collections: ${formatINR(totalCollections)}\n` +
-    `*Net Outstanding: ${formatINR(netOutstanding)}*\n\n` +
-    `Ageing:\n`;
-  Object.entries(ageingTotals).forEach(([bucket, amt]) => {
-    if (amt > 0.5) text += `  ${bucket} days: ${formatINR(amt)}\n`;
+export function shareOutstanding(buyer, invoices, partyTotal) {
+  let text = `*Outstanding Statement — ${buyer.name}*\nAs on: ${formatDate(new Date().toISOString())}\n\n`;
+  invoices.forEach((inv) => {
+    text += `${formatDate(inv.invoiceDate)} · Inv ${inv.invoiceNo || inv.indentNumber} · Bal: ${formatINR(
+      inv.balance
+    )} · ${inv.days}d\n`;
   });
+  text += `\n*Total Outstanding: ${formatINR(partyTotal)}*`;
   openWhatsApp(buyer.phone, text);
+}
+
+export function shareCollection(collection, buyer) {
+  const total = (collection.allocations || []).reduce(
+    (s, a) => s + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0),
+    0
+  );
+  let text =
+    `*Payment Received Confirmation*\n` +
+    `Date: ${formatDate(collection.date)}\n` +
+    `From: ${buyer?.name || "—"}\n` +
+    `Mode: ${collection.mode}${collection.reference ? " · Ref: " + collection.reference : ""}\n` +
+    `Total: ${formatINR(total)}\n\nApplied against:\n`;
+  (collection.allocations || []).forEach((a) => {
+    text += `  Inv ${a.invoiceNo || ""}: ${formatINR(a.amount)}${
+      a.cdAmount > 0.5 ? ` + CD ${a.cdPct}% (${formatINR(a.cdAmount)})` : ""
+    }\n`;
+  });
+  openWhatsApp(buyer?.phone, text);
 }

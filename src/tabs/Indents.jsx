@@ -2,8 +2,9 @@
 import React, { useState } from "react";
 import { styles, colors, statusColors } from "../styles";
 import { formatINR, formatDate, todayISO } from "../lib/storage";
-import { indentValue, totalDispatchedQty } from "../lib/calc";
+import { indentOrderValue, totalDispatchedQty, pendingQty } from "../lib/calc";
 import { shareIndent, shareDispatch } from "../lib/whatsapp";
+import { printReport } from "../lib/print";
 
 export default function IndentsTab({
   data,
@@ -16,22 +17,26 @@ export default function IndentsTab({
   const [form, setForm] = useState({
     buyerId: "",
     millId: "",
+    productId: "",
     productName: "",
     quantity: "",
     unit: "meters",
     rate: "",
-    commissionPct: "",
+    remark: "",
+    deliveryInstruction: "",
+    transport: "",
+    packingInstruction: "",
   });
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
   const getBuyer = (id) => data.buyers.find((b) => b.id === id);
   const getMill = (id) => data.mills.find((m) => m.id === id);
 
-  const canSubmit =
-    form.buyerId && form.millId && form.productName && form.quantity && form.rate;
+  const canSubmit = form.buyerId && form.millId && form.productId && form.quantity && form.rate;
 
   function submit() {
     if (!canSubmit) return;
@@ -39,23 +44,53 @@ export default function IndentsTab({
       ...form,
       quantity: Number(form.quantity),
       rate: Number(form.rate),
-      commissionPct: Number(form.commissionPct) || 0,
     });
     setForm({
       buyerId: "",
       millId: "",
+      productId: "",
       productName: "",
       quantity: "",
       unit: "meters",
       rate: "",
-      commissionPct: "",
+      remark: "",
+      deliveryInstruction: "",
+      transport: "",
+      packingInstruction: "",
     });
     setShowForm(false);
   }
 
-  const visibleIndents = filterStatus
-    ? data.indents.filter((i) => i.status === filterStatus)
-    : data.indents;
+  function closeIndent(indent) {
+    const ok = window.confirm(
+      `Close Indent ${indent.indentNumber}? This marks it closed regardless of pending quantity — use this when the buyer/mill has agreed to not fulfill the remaining balance.`
+    );
+    if (ok) updateIndent(indent.id, { status: "closed" });
+  }
+
+  function exportIndentPDF(indent) {
+    const value = indentOrderValue(indent);
+    const html = `
+      <h2>Indent ${indent.indentNumber}</h2>
+      <p>Date: ${formatDate(indent.date)}</p>
+      <table>
+        <tr><th>Buyer</th><td>${buyerName(indent.buyerId)}</td></tr>
+        <tr><th>Mill</th><td>${millName(indent.millId)}</td></tr>
+        <tr><th>Product</th><td>${indent.productName}</td></tr>
+        <tr><th>Quantity</th><td>${indent.quantity} ${indent.unit}</td></tr>
+        <tr><th>Rate</th><td>${formatINR(indent.rate)}</td></tr>
+        <tr><th>Order Value</th><td>${formatINR(value)}</td></tr>
+        <tr><th>Delivery Instruction</th><td>${indent.deliveryInstruction || "—"}</td></tr>
+        <tr><th>Transport</th><td>${indent.transport || "—"}</td></tr>
+        <tr><th>Packing Instruction</th><td>${indent.packingInstruction || "—"}</td></tr>
+        <tr><th>Remark</th><td>${indent.remark || "—"}</td></tr>
+        <tr><th>Status</th><td>${indent.status}</td></tr>
+      </table>
+    `;
+    printReport(`Indent ${indent.indentNumber}`, html);
+  }
+
+  const visibleIndents = filterStatus ? data.indents.filter((i) => i.status === filterStatus) : data.indents;
 
   return (
     <div>
@@ -68,41 +103,66 @@ export default function IndentsTab({
 
       {showForm && (
         <div style={styles.card}>
-          <label style={styles.label}>Buyer *</label>
-          <select
-            style={styles.input}
-            value={form.buyerId}
-            onChange={(e) => setForm({ ...form, buyerId: e.target.value })}
-          >
-            <option value="">Select buyer</option>
-            {data.buyers.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <div style={styles.row2}>
+            <div>
+              <label style={styles.label}>Buyer *</label>
+              <select
+                style={styles.input}
+                value={form.buyerId}
+                onChange={(e) => setForm({ ...form, buyerId: e.target.value })}
+              >
+                <option value="">Select buyer</option>
+                {data.buyers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={styles.label}>Mill *</label>
+              <select
+                style={styles.input}
+                value={form.millId}
+                onChange={(e) => setForm({ ...form, millId: e.target.value })}
+              >
+                <option value="">Select mill</option>
+                {data.mills.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-          <label style={styles.label}>Mill *</label>
-          <select
-            style={styles.input}
-            value={form.millId}
-            onChange={(e) => setForm({ ...form, millId: e.target.value })}
-          >
-            <option value="">Select mill</option>
-            {data.mills.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-
-          <label style={styles.label}>Product / Quality *</label>
-          <input
-            style={styles.input}
-            placeholder="e.g. Cotton Poplin, 58 inch, White"
-            value={form.productName}
-            onChange={(e) => setForm({ ...form, productName: e.target.value })}
-          />
+          <label style={styles.label}>Product *</label>
+          {data.products.length === 0 ? (
+            <div style={{ fontSize: 13, color: colors.danger, marginBottom: 12 }}>
+              No products added yet. Go to the Products tab first and add at least one product.
+            </div>
+          ) : (
+            <select
+              style={styles.input}
+              value={form.productId}
+              onChange={(e) => {
+                const p = data.products.find((prod) => prod.id === e.target.value);
+                setForm({
+                  ...form,
+                  productId: e.target.value,
+                  productName: p?.name || "",
+                  unit: p?.unit || "meters",
+                });
+              }}
+            >
+              <option value="">Select product</option>
+              {data.products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           <div style={styles.row2}>
             <div>
@@ -127,26 +187,41 @@ export default function IndentsTab({
             </div>
           </div>
 
-          <div style={styles.row2}>
-            <div>
-              <label style={styles.label}>Rate (₹) *</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={form.rate}
-                onChange={(e) => setForm({ ...form, rate: e.target.value })}
-              />
-            </div>
-            <div>
-              <label style={styles.label}>Commission %</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={form.commissionPct}
-                onChange={(e) => setForm({ ...form, commissionPct: e.target.value })}
-              />
-            </div>
-          </div>
+          <label style={styles.label}>Rate (₹) *</label>
+          <input
+            style={styles.input}
+            type="number"
+            value={form.rate}
+            onChange={(e) => setForm({ ...form, rate: e.target.value })}
+          />
+
+          <label style={styles.label}>Delivery Instruction</label>
+          <input
+            style={styles.input}
+            value={form.deliveryInstruction}
+            onChange={(e) => setForm({ ...form, deliveryInstruction: e.target.value })}
+          />
+
+          <label style={styles.label}>Transport</label>
+          <input
+            style={styles.input}
+            value={form.transport}
+            onChange={(e) => setForm({ ...form, transport: e.target.value })}
+          />
+
+          <label style={styles.label}>Packing Instruction</label>
+          <input
+            style={styles.input}
+            value={form.packingInstruction}
+            onChange={(e) => setForm({ ...form, packingInstruction: e.target.value })}
+          />
+
+          <label style={styles.label}>Remark</label>
+          <textarea
+            style={{ ...styles.input, minHeight: 60 }}
+            value={form.remark}
+            onChange={(e) => setForm({ ...form, remark: e.target.value })}
+          />
 
           <button style={styles.btn} disabled={!canSubmit} onClick={submit}>
             Save Indent
@@ -165,32 +240,92 @@ export default function IndentsTab({
           <option value="confirmed">Confirmed</option>
           <option value="partial_dispatch">Partial Dispatch</option>
           <option value="fulfilled">Fulfilled</option>
+          <option value="closed">Closed</option>
           <option value="cancelled">Cancelled</option>
         </select>
       </div>
 
-      {visibleIndents.length === 0 && (
-        <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>
-          No indents found. Add Mills and Buyers first, then create your first indent.
-        </div>
-      )}
+      {/* ---------- Indent register table ---------- */}
+      <div style={{ ...styles.card, overflowX: "auto" }}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Indent No</th>
+              <th style={styles.th}>Date</th>
+              <th style={styles.th}>Buyer</th>
+              <th style={styles.th}>Product</th>
+              <th style={styles.th}>Order Qty</th>
+              <th style={styles.th}>Dispatch Qty</th>
+              <th style={styles.th}>Pending Qty</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleIndents.map((indent) => {
+              const dispatched = totalDispatchedQty(indent);
+              const pending = pendingQty(indent);
+              const [bg, fg] = statusColors[indent.status] || statusColors.pending;
+              return (
+                <tr key={indent.id}>
+                  <td style={styles.td}>
+                    <button
+                      style={{ background: "none", border: "none", color: colors.indigo, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      onClick={() => setExpandedId(expandedId === indent.id ? null : indent.id)}
+                    >
+                      {indent.indentNumber}
+                    </button>
+                  </td>
+                  <td style={styles.td}>{formatDate(indent.date)}</td>
+                  <td style={styles.td}>{buyerName(indent.buyerId)}</td>
+                  <td style={{ ...styles.td, whiteSpace: "normal" }}>{indent.productName}</td>
+                  <td style={styles.td}>
+                    {indent.quantity} {indent.unit}
+                  </td>
+                  <td style={styles.td}>
+                    {dispatched} {indent.unit}
+                  </td>
+                  <td style={styles.td}>
+                    {pending} {indent.unit}
+                  </td>
+                  <td style={styles.td}>
+                    <span style={styles.badge(bg, fg)}>{indent.status}</span>
+                  </td>
+                  <td style={styles.td}>
+                    <button
+                      style={{ ...styles.btnGhost, padding: "4px 8px", fontSize: 11 }}
+                      onClick={() => setExpandedId(expandedId === indent.id ? null : indent.id)}
+                    >
+                      {expandedId === indent.id ? "Hide" : "Details"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {visibleIndents.length === 0 && (
+              <tr>
+                <td style={styles.td} colSpan={9}>
+                  No indents found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {visibleIndents.map((indent) => {
-        const value = indentValue(indent);
-        const [bg, fg] = statusColors[indent.status] || statusColors.pending;
-        return (
+      {/* ---------- Expanded detail card ---------- */}
+      {visibleIndents
+        .filter((i) => i.id === expandedId)
+        .map((indent) => (
           <div key={indent.id} style={styles.listItem}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <strong>{indent.indentNumber}</strong>
-              <span style={styles.badge(bg, fg)}>{indent.status}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <strong>{indent.indentNumber}</strong> — {millName(indent.millId)}
             </div>
             <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8 }}>
-              {formatDate(indent.date)} · {buyerName(indent.buyerId)} ← {millName(indent.millId)}
-            </div>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>
-              {indent.productName} — {indent.quantity} {indent.unit} @ {formatINR(indent.rate)}
-              <br />
-              Value: <strong>{formatINR(value)}</strong> · Commission %: {indent.commissionPct}%
+              {indent.deliveryInstruction && <div>Delivery Instruction: {indent.deliveryInstruction}</div>}
+              {indent.transport && <div>Transport: {indent.transport}</div>}
+              {indent.packingInstruction && <div>Packing Instruction: {indent.packingInstruction}</div>}
+              {indent.remark && <div>Remark: {indent.remark}</div>}
             </div>
 
             <div style={{ marginBottom: 8 }}>
@@ -203,6 +338,7 @@ export default function IndentsTab({
                 <option value="confirmed">Confirmed</option>
                 <option value="partial_dispatch">Partial Dispatch</option>
                 <option value="fulfilled">Fulfilled</option>
+                <option value="closed">Closed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
@@ -214,33 +350,42 @@ export default function IndentsTab({
               deleteDispatch={deleteDispatch}
             />
 
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               <button
                 style={styles.btnWhatsapp}
                 onClick={() => shareIndent(indent, getBuyer(indent.buyerId), getMill(indent.millId))}
               >
-                Share Indent (WA)
+                Share (WA)
               </button>
+              <button style={styles.btnPdf} onClick={() => exportIndentPDF(indent)}>
+                Export PDF
+              </button>
+              {indent.status !== "closed" && indent.status !== "cancelled" && (
+                <button style={styles.btnGhost} onClick={() => closeIndent(indent)}>
+                  Close Indent
+                </button>
+              )}
               <button style={styles.btnDanger} onClick={() => deleteIndent(indent.id)}>
                 Delete
               </button>
             </div>
           </div>
-        );
-      })}
+        ))}
     </div>
   );
 }
 
-/* ---------- Dispatch sub-section, nested inside each indent card ---------- */
+/* ---------- Dispatch sub-section, nested inside each indent's detail card ---------- */
 function DispatchSection({ indent, buyer, addDispatch, deleteDispatch }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     date: todayISO(),
     qty: "",
-    lrNumber: "",
-    transporter: "",
     invoiceNumber: "",
+    invoiceDate: todayISO(),
+    lrNumber: "",
+    lrDate: todayISO(),
+    transporter: "",
   });
 
   const dispatches = indent.dispatches || [];
@@ -252,7 +397,15 @@ function DispatchSection({ indent, buyer, addDispatch, deleteDispatch }) {
   function submit() {
     if (!canSubmit) return;
     addDispatch(indent.id, { ...form, qty: Number(form.qty) });
-    setForm({ date: todayISO(), qty: "", lrNumber: "", transporter: "", invoiceNumber: "" });
+    setForm({
+      date: todayISO(),
+      qty: "",
+      invoiceNumber: "",
+      invoiceDate: todayISO(),
+      lrNumber: "",
+      lrDate: todayISO(),
+      transporter: "",
+    });
     setShowForm(false);
   }
 
@@ -298,6 +451,25 @@ function DispatchSection({ indent, buyer, addDispatch, deleteDispatch }) {
           </div>
           <div style={styles.row2}>
             <div>
+              <label style={styles.label}>Mill Invoice Number</label>
+              <input
+                style={styles.input}
+                value={form.invoiceNumber}
+                onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Invoice Date</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={form.invoiceDate}
+                onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })}
+              />
+            </div>
+          </div>
+          <div style={styles.row2}>
+            <div>
               <label style={styles.label}>LR Number</label>
               <input
                 style={styles.input}
@@ -307,19 +479,20 @@ function DispatchSection({ indent, buyer, addDispatch, deleteDispatch }) {
               />
             </div>
             <div>
-              <label style={styles.label}>Transporter</label>
+              <label style={styles.label}>LR Date</label>
               <input
                 style={styles.input}
-                value={form.transporter}
-                onChange={(e) => setForm({ ...form, transporter: e.target.value })}
+                type="date"
+                value={form.lrDate}
+                onChange={(e) => setForm({ ...form, lrDate: e.target.value })}
               />
             </div>
           </div>
-          <label style={styles.label}>Mill Invoice Number</label>
+          <label style={styles.label}>Transporter</label>
           <input
             style={styles.input}
-            value={form.invoiceNumber}
-            onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}
+            value={form.transporter}
+            onChange={(e) => setForm({ ...form, transporter: e.target.value })}
           />
           <button style={styles.btn} disabled={!canSubmit} onClick={submit}>
             Save Dispatch Entry
@@ -345,9 +518,9 @@ function DispatchSection({ indent, buyer, addDispatch, deleteDispatch }) {
               {disp.qty} {indent.unit}
             </strong>{" "}
             on {formatDate(disp.date)}
+            {disp.invoiceNumber ? ` · Inv: ${disp.invoiceNumber}` : ""}
             {disp.lrNumber ? ` · LR: ${disp.lrNumber}` : ""}
             {disp.transporter ? ` · ${disp.transporter}` : ""}
-            {disp.invoiceNumber ? ` · Inv: ${disp.invoiceNumber}` : ""}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <button

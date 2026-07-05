@@ -4,20 +4,34 @@
 
 const STORAGE_KEY = "indentingAgencyData_v2";
 
+export const DEFAULT_CD_POLICY = {
+  maxCreditDays: 120,
+  tiers: [
+    { label: "Early Payment", minDays: 7, maxDays: 12, pct: 4 },
+    { label: "Mid Term", minDays: 35, maxDays: 45, pct: 3 },
+    { label: "Standard", minDays: 46, maxDays: 60, pct: 2 },
+  ],
+};
+
 export const emptyData = {
   mills: [],
   buyers: [],
-  indents: [],       // each indent has a nested `dispatches: []` array
-  collections: [],   // buyer payments received (Collection module)
+  products: [],     // Products master (fabric spec — no price stored here)
+  indents: [],       // each indent has a nested `dispatches: []` array (dispatches = mill invoices)
+  collections: [],   // buyer payments received, each with per-invoice allocations
   debitNotes: [],    // buyer debit notes
   creditNotes: [],   // buyer credit notes
+  settings: {
+    cdPolicy: DEFAULT_CD_POLICY,
+  },
 };
 
 export function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyData;
-    return { ...emptyData, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return { ...emptyData, ...parsed, settings: { ...emptyData.settings, ...(parsed.settings || {}) } };
   } catch {
     return emptyData;
   }

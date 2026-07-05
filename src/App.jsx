@@ -12,6 +12,9 @@ import OutstandingTab from "./tabs/Outstanding";
 import ReportsTab from "./tabs/Reports";
 import LedgerTab from "./tabs/Ledger";
 import MastersTab from "./tabs/Masters";
+import ProductsTab from "./tabs/Products";
+import DataTools from "./tabs/DataTools";
+import { calcGsmAndOz } from "./lib/textile";
 
 const TABS = [
   ["dashboard", "Dashboard"],
@@ -25,6 +28,8 @@ const TABS = [
   ["ledger", "Ledger"],
   ["mills", "Mills"],
   ["buyers", "Buyers"],
+  ["products", "Products"],
+  ["datatools", "Backup/Import"],
 ];
 
 export default function App() {
@@ -42,6 +47,46 @@ export default function App() {
   /* ---------- Buyers ---------- */
   const addBuyer = (buyer) => setData((d) => ({ ...d, buyers: [...d.buyers, { id: uid(), ...buyer }] }));
   const deleteBuyer = (id) => setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.id !== id) }));
+
+  /* ---------- Products ---------- */
+  const addProduct = (product) => {
+    const { gsm, oz } = calcGsmAndOz(product.weightGLM, product.width);
+    setData((d) => ({ ...d, products: [...d.products, { id: uid(), ...product, gsm, oz }] }));
+  };
+  const deleteProduct = (id) => setData((d) => ({ ...d, products: d.products.filter((p) => p.id !== id) }));
+
+  /* ---------- CD Policy ---------- */
+  const updateCdPolicy = (cdPolicy) => setData((d) => ({ ...d, settings: { ...d.settings, cdPolicy } }));
+
+  /* ---------- Bulk import from Excel (Masters only) ---------- */
+  const importMills = (rows) =>
+    setData((d) => ({ ...d, mills: [...d.mills, ...rows.map((r) => ({ id: uid(), ...r }))] }));
+  const importBuyers = (rows) =>
+    setData((d) => ({ ...d, buyers: [...d.buyers, ...rows.map((r) => ({ id: uid(), ...r }))] }));
+  const importProducts = (rows) =>
+    setData((d) => ({
+      ...d,
+      products: [
+        ...d.products,
+        ...rows.map((r) => {
+          const { gsm, oz } = calcGsmAndOz(r.weightGLM, r.width);
+          return { id: uid(), ...r, gsm, oz };
+        }),
+      ],
+    }));
+
+  /* ---------- Restore from backup file ---------- */
+  const restoreData = (backup) => {
+    setData({
+      mills: backup.mills || [],
+      buyers: backup.buyers || [],
+      products: backup.products || [],
+      indents: backup.indents || [],
+      collections: backup.collections || [],
+      debitNotes: backup.debitNotes || [],
+      creditNotes: backup.creditNotes || [],
+    });
+  };
 
   /* ---------- Indents ---------- */
   const addIndent = (indent) =>
@@ -144,7 +189,12 @@ export default function App() {
         {tab === "dispatch" && <DispatchTab data={data} />}
 
         {tab === "collections" && (
-          <CollectionsTab data={data} addCollection={addCollection} deleteCollection={deleteCollection} />
+          <CollectionsTab
+            data={data}
+            addCollection={addCollection}
+            deleteCollection={deleteCollection}
+            updateCdPolicy={updateCdPolicy}
+          />
         )}
 
         {tab === "debitnotes" && (
@@ -170,6 +220,8 @@ export default function App() {
             fields={[
               { key: "name", label: "Mill Name", required: true },
               { key: "phone", label: "Phone (with country code, e.g. 91...)" },
+              { key: "address", label: "Full Address" },
+              { key: "gst", label: "GST Number" },
               { key: "commissionPct", label: "Default Commission %", type: "number" },
               { key: "paymentTerms", label: "Payment Terms" },
             ]}
@@ -185,9 +237,22 @@ export default function App() {
             fields={[
               { key: "name", label: "Business Name", required: true },
               { key: "phone", label: "Phone (with country code, e.g. 91...)" },
+              { key: "address", label: "Full Address" },
               { key: "gst", label: "GST Number" },
               { key: "creditDays", label: "Credit Days", type: "number" },
             ]}
+          />
+        )}
+
+        {tab === "products" && <ProductsTab items={data.products} onAdd={addProduct} onDelete={deleteProduct} />}
+
+        {tab === "datatools" && (
+          <DataTools
+            data={data}
+            restoreData={restoreData}
+            importMills={importMills}
+            importBuyers={importBuyers}
+            importProducts={importProducts}
           />
         )}
       </div>

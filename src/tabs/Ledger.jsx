@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate } from "../lib/storage";
-import { indentValue, totalDispatchedQty } from "../lib/calc";
+import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
 
 export default function LedgerTab({ data }) {
@@ -10,124 +10,48 @@ export default function LedgerTab({ data }) {
   const [entityId, setEntityId] = useState("");
 
   const entities = entityType === "buyer" ? data.buyers : data.mills;
-
-  function buildBuyerLedger(buyerId) {
-    const entries = [];
-    data.indents
-      .filter((i) => i.buyerId === buyerId)
-      .forEach((i) =>
-        entries.push({
-          date: i.date,
-          particulars: `Indent ${i.indentNumber} — ${i.productName}`,
-          debit: indentValue(i),
-          credit: 0,
-        })
-      );
-    data.collections
-      .filter((c) => c.buyerId === buyerId)
-      .forEach((c) =>
-        entries.push({
-          date: c.date,
-          particulars: `Collection received (${c.mode}${c.reference ? " · " + c.reference : ""})`,
-          debit: 0,
-          credit: Number(c.amount) || 0,
-        })
-      );
-    data.debitNotes
-      .filter((n) => n.buyerId === buyerId)
-      .forEach((n) =>
-        entries.push({
-          date: n.date,
-          particulars: `Debit Note${n.reason ? " — " + n.reason : ""}`,
-          debit: Number(n.amount) || 0,
-          credit: 0,
-        })
-      );
-    data.creditNotes
-      .filter((n) => n.buyerId === buyerId)
-      .forEach((n) =>
-        entries.push({
-          date: n.date,
-          particulars: `Credit Note${n.reason ? " — " + n.reason : ""}`,
-          debit: 0,
-          credit: Number(n.amount) || 0,
-        })
-      );
-
-    entries.sort((a, b) => new Date(a.date) - new Date(b.date));
-    let balance = 0;
-    return entries.map((e) => {
-      balance += e.debit - e.credit;
-      return { ...e, balance };
-    });
-  }
-
-  function buildMillLedger(millId) {
-    const entries = [];
-    data.indents
-      .filter((i) => i.millId === millId)
-      .forEach((i) => {
-        entries.push({
-          date: i.date,
-          particulars: `Indent ${i.indentNumber} placed — ${i.productName} (${i.quantity} ${i.unit})`,
-        });
-        (i.dispatches || []).forEach((d) =>
-          entries.push({
-            date: d.date,
-            particulars: `Dispatched ${d.qty} ${i.unit} against ${i.indentNumber}${
-              d.lrNumber ? " · LR " + d.lrNumber : ""
-            }`,
-          })
-        );
-      });
-    entries.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return entries;
-  }
-
-  const ledger =
-    entityType === "buyer" && entityId
-      ? buildBuyerLedger(entityId)
-      : entityType === "mill" && entityId
-      ? buildMillLedger(entityId)
-      : [];
-
   const entityName = entities.find((e) => e.id === entityId)?.name || "";
 
+  const entries = entityId
+    ? ledgerEntries({
+        entityType,
+        entityId,
+        indents: data.indents,
+        mills: data.mills,
+        collections: data.collections,
+        debitNotes: data.debitNotes,
+        creditNotes: data.creditNotes,
+      })
+    : [];
+
+  const totalBalance = entries.length ? entries[entries.length - 1].runningBalance : 0;
+
   function exportPDF() {
-    if (entityType === "buyer") {
-      const rows = ledger
-        .map(
-          (e) => `
-        <tr>
-          <td>${formatDate(e.date)}</td>
-          <td>${e.particulars}</td>
-          <td>${e.debit ? formatINR(e.debit) : ""}</td>
-          <td>${e.credit ? formatINR(e.credit) : ""}</td>
-          <td>${formatINR(e.balance)}</td>
-        </tr>`
-        )
-        .join("");
-      const html = `
-        <h2>Account Ledger — ${entityName}</h2>
-        <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
-        <table>
-          <thead><tr><th>Date</th><th>Particulars</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      `;
-      printReport(`Ledger - ${entityName}`, html);
-    } else {
-      const rows = ledger.map((e) => `<tr><td>${formatDate(e.date)}</td><td>${e.particulars}</td></tr>`).join("");
-      const html = `
-        <h2>Mill Order & Dispatch History — ${entityName}</h2>
-        <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
-        <table>
-          <thead><tr><th>Date</th><th>Particulars</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      `;
-      printReport(`Ledger - ${entityName}`, html);
-    }
+    const rows = entries
+      .map(
+        (e) => `
+      <tr>
+        <td>${formatDate(e.date)}</td>
+        <td>${e.particular}</td>
+        <td>${e.debit ? formatINR(e.debit) : ""}</td>
+        <td>${e.credit ? formatINR(e.credit) : ""}</td>
+        <td>${formatINR(e.balanceAmt)}</td>
+        <td>${formatINR(e.runningBalance)}</td>
+      </tr>`
+      )
+      .join("");
+    const html = `
+      <h2>Account Ledger — ${entityName}</h2>
+      <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
+      <table>
+        <thead>
+          <tr><th>Doc/Transaction Date</th><th>Particular</th><th>Debit Amt</th><th>Credit Amt</th><th>Balance Amt</th><th>Running Balance</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p><strong>Total Balance: ${formatINR(totalBalance)}</strong></p>
+    `;
+    printReport(`Ledger - ${entityName}`, html);
   }
 
   return (
@@ -175,65 +99,44 @@ export default function LedgerTab({ data }) {
         </div>
       )}
 
-      {entityId && entityType === "buyer" && (
+      {entityId && (
         <div style={{ ...styles.card, overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Date</th>
-                <th style={styles.th}>Particulars</th>
-                <th style={styles.th}>Debit</th>
-                <th style={styles.th}>Credit</th>
-                <th style={styles.th}>Balance</th>
+                <th style={styles.th}>Doc / Transaction Date</th>
+                <th style={styles.th}>Particular</th>
+                <th style={styles.th}>Debit Amt</th>
+                <th style={styles.th}>Credit Amt</th>
+                <th style={styles.th}>Balance Amt</th>
+                <th style={styles.th}>Running Balance</th>
               </tr>
             </thead>
             <tbody>
-              {ledger.map((e, i) => (
+              {entries.map((e, i) => (
                 <tr key={i}>
                   <td style={styles.td}>{formatDate(e.date)}</td>
-                  <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particulars}</td>
+                  <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particular}</td>
                   <td style={styles.td}>{e.debit ? formatINR(e.debit) : ""}</td>
                   <td style={styles.td}>{e.credit ? formatINR(e.credit) : ""}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(e.balance)}</td>
+                  <td style={styles.td}>{formatINR(e.balanceAmt)}</td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(e.runningBalance)}</td>
                 </tr>
               ))}
-              {ledger.length === 0 && (
+              {entries.length === 0 && (
                 <tr>
-                  <td style={styles.td} colSpan={5}>
+                  <td style={styles.td} colSpan={6}>
                     No transactions yet.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {entityId && entityType === "mill" && (
-        <div style={{ ...styles.card, overflowX: "auto" }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Date</th>
-                <th style={styles.th}>Particulars</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ledger.map((e, i) => (
-                <tr key={i}>
-                  <td style={styles.td}>{formatDate(e.date)}</td>
-                  <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particulars}</td>
-                </tr>
-              ))}
-              {ledger.length === 0 && (
-                <tr>
-                  <td style={styles.td} colSpan={2}>
-                    No transactions yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          {entries.length > 0 && (
+            <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
+              Total Balance: {formatINR(totalBalance)}
+            </div>
+          )}
         </div>
       )}
     </div>
