@@ -1,7 +1,7 @@
 // src/tabs/Ledger.jsx
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
-import { formatINR, formatDate } from "../lib/storage";
+import { formatINR, formatDate, formatBalance } from "../lib/storage";
 import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
 
@@ -33,10 +33,10 @@ export default function LedgerTab({ data }) {
       <tr>
         <td>${formatDate(e.date)}</td>
         <td>${e.particular}</td>
-        <td>${e.debit ? formatINR(e.debit) : ""}</td>
+        <td>${formatINR(e.debit ? e.debit : 0)}</td>
         <td>${e.credit ? formatINR(e.credit) : ""}</td>
-        <td>${formatINR(e.balanceAmt)}</td>
-        <td>${formatINR(e.runningBalance)}</td>
+        <td>${formatBalance(e.balanceAmt)}</td>
+        <td>${formatBalance(e.runningBalance)}</td>
       </tr>`
       )
       .join("");
@@ -49,7 +49,7 @@ export default function LedgerTab({ data }) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p><strong>Total Balance: ${formatINR(totalBalance)}</strong></p>
+      <p><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
     `;
     printReport(`Ledger - ${entityName}`, html);
   }
@@ -119,8 +119,8 @@ export default function LedgerTab({ data }) {
                   <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particular}</td>
                   <td style={styles.td}>{e.debit ? formatINR(e.debit) : ""}</td>
                   <td style={styles.td}>{e.credit ? formatINR(e.credit) : ""}</td>
-                  <td style={styles.td}>{formatINR(e.balanceAmt)}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(e.runningBalance)}</td>
+                  <td style={styles.td}>{formatBalance(e.balanceAmt)}</td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatBalance(e.runningBalance)}</td>
                 </tr>
               ))}
               {entries.length === 0 && (
@@ -134,7 +134,7 @@ export default function LedgerTab({ data }) {
           </table>
           {entries.length > 0 && (
             <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
-              Total Balance: {formatINR(totalBalance)}
+              Total Balance: {formatBalance(totalBalance)}
             </div>
           )}
         </div>

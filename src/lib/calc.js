@@ -136,6 +136,15 @@ export function millOutstandingSummary(indents, mills, collections) {
   return byMill; // { millId: totalPendingAmount }
 }
 
+/* ---------- Mill-wise pending, broken down date/invoice/party-wise ---------- */
+export function millOutstandingInvoices(millId, indents, mills, collections) {
+  const invoices = computeInvoices(indents, mills).filter((i) => i.millId === millId);
+  return invoices
+    .map((inv) => invoiceWithStatus(inv, collections))
+    .filter((inv) => inv.balance > 0.5)
+    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+}
+
 /* ---------- Pending invoices for a buyer, for the Collection-entry screen ---------- */
 export function pendingInvoicesForCollectionEntry(buyerId, indents, mills, collections, cdPolicy) {
   return buyerOutstandingInvoices(buyerId, indents, mills, collections).map((inv) => ({

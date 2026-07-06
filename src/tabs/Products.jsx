@@ -3,51 +3,77 @@ import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { calcGsmAndOz } from "../lib/textile";
 
-export default function ProductsTab({ items, onAdd, onDelete }) {
+const emptyForm = {
+  name: "",
+  unit: "meters",
+  commercialNo: "",
+  dying: "",
+  type: "",
+  weightGLM: "",
+  width: "",
+  finish: "",
+  packing: "",
+};
+
+export default function ProductsTab({ items, onAdd, onUpdate, onDelete }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    unit: "meters",
-    commercialNo: "",
-    dying: "",
-    type: "",
-    weightGLM: "",
-    width: "",
-    finish: "",
-    packing: "",
-  });
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
 
   const { gsm, oz } = calcGsmAndOz(form.weightGLM, form.width);
   const canSubmit = form.name.trim() !== "";
 
+  function startEdit(p) {
+    setForm({
+      name: p.name,
+      unit: p.unit || "meters",
+      commercialNo: p.commercialNo || "",
+      dying: p.dying || "",
+      type: p.type || "",
+      weightGLM: p.weightGLM || "",
+      width: p.width || "",
+      finish: p.finish || "",
+      packing: p.packing || "",
+    });
+    setEditingId(p.id);
+    setShowForm(true);
+  }
+
   function submit() {
     if (!canSubmit) return;
-    onAdd({ ...form, gsm, oz });
-    setForm({
-      name: "",
-      unit: "meters",
-      commercialNo: "",
-      dying: "",
-      type: "",
-      weightGLM: "",
-      width: "",
-      finish: "",
-      packing: "",
-    });
+    if (editingId && onUpdate) {
+      onUpdate(editingId, { ...form, gsm, oz });
+    } else {
+      onAdd({ ...form, gsm, oz });
+    }
+    setForm(emptyForm);
+    setEditingId(null);
     setShowForm(false);
+  }
+
+  function cancelForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setShowForm(false);
+  }
+
+  function handleDelete(p) {
+    const ok = window.confirm(`⚠️ Delete product "${p.name}" permanently? This cannot be undone.`);
+    if (ok) onDelete(p.id);
   }
 
   return (
     <div>
       <div style={styles.sectionHeader}>
-        <div style={styles.h2}>Products</div>
-        <button style={styles.btn} onClick={() => setShowForm((s) => !s)}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Products</div>
+        <button style={styles.btn} onClick={() => (showForm ? cancelForm() : setShowForm(true))}>
           {showForm ? "Cancel" : "+ Add"}
         </button>
       </div>
 
       {showForm && (
         <div style={styles.card}>
+          {editingId && <div style={{ fontSize: 12, color: colors.mustard, marginBottom: 8, fontWeight: 700 }}>Editing Product</div>}
           <label style={styles.label}>Product / Quality Name *</label>
           <input style={styles.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
 
@@ -61,11 +87,7 @@ export default function ProductsTab({ items, onAdd, onDelete }) {
             </div>
             <div>
               <label style={styles.label}>Commercial No.</label>
-              <input
-                style={styles.input}
-                value={form.commercialNo}
-                onChange={(e) => setForm({ ...form, commercialNo: e.target.value })}
-              />
+              <input style={styles.input} value={form.commercialNo} onChange={(e) => setForm({ ...form, commercialNo: e.target.value })} />
             </div>
           </div>
 
@@ -83,12 +105,7 @@ export default function ProductsTab({ items, onAdd, onDelete }) {
           <div style={styles.row2}>
             <div>
               <label style={styles.label}>Weight (GLM — grams/linear meter)</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={form.weightGLM}
-                onChange={(e) => setForm({ ...form, weightGLM: e.target.value })}
-              />
+              <input style={styles.input} type="number" value={form.weightGLM} onChange={(e) => setForm({ ...form, weightGLM: e.target.value })} />
             </div>
             <div>
               <label style={styles.label}>Width (inches)</label>
@@ -97,12 +114,8 @@ export default function ProductsTab({ items, onAdd, onDelete }) {
           </div>
 
           <div style={{ ...styles.card, background: colors.bg, marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>
-              Auto-calculated from GLM &amp; Width:
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>
-              GSM: {gsm || 0} · OZ: {oz || 0}
-            </div>
+            <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>Auto-calculated from GLM &amp; Width:</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>GSM: {gsm || 0} · OZ: {oz || 0}</div>
           </div>
 
           <div style={styles.row2}>
@@ -117,7 +130,7 @@ export default function ProductsTab({ items, onAdd, onDelete }) {
           </div>
 
           <button style={styles.btn} disabled={!canSubmit} onClick={submit}>
-            Save Product
+            {editingId ? "Save Changes" : "Save Product"}
           </button>
         </div>
       )}
@@ -148,9 +161,14 @@ export default function ProductsTab({ items, onAdd, onDelete }) {
                 .join(" · ")}
             </div>
           </div>
-          <button style={styles.btnDanger} onClick={() => onDelete(p.id)}>
-            Delete
-          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button style={{ ...styles.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => startEdit(p)}>
+              Edit
+            </button>
+            <button style={styles.btnDanger} onClick={() => handleDelete(p)}>
+              Delete
+            </button>
+          </div>
         </div>
       ))}
     </div>

@@ -225,8 +225,11 @@ function CollectionForm({ data, onSave }) {
   const [reference, setReference] = useState("");
   const [selected, setSelected] = useState({}); // { invoiceKey: { checked, amount, cdPct } }
 
+  const cdPolicy = data.settings.cdPolicy;
+  const cdOptions = [{ label: "No CD (0%)", pct: 0 }, ...cdPolicy.tiers.map((t) => ({ label: `${t.label} — ${t.pct}%`, pct: t.pct }))];
+
   const pendingInvoices = buyerId
-    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, data.collections, data.settings.cdPolicy)
+    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, data.collections, cdPolicy)
     : [];
 
   function toggleInvoice(inv) {
@@ -235,12 +238,15 @@ function CollectionForm({ data, onSave }) {
       if (existing?.checked) {
         return { ...s, [inv.key]: { ...existing, checked: false } };
       }
+      const cdPct = inv.suggestedCdPct || 0;
+      const cdAmount = (inv.value * cdPct) / 100;
       return {
         ...s,
         [inv.key]: {
           checked: true,
-          amount: inv.balance,
-          cdPct: inv.suggestedCdPct,
+          invoiceValue: inv.value,
+          amount: Math.max(inv.balance - cdAmount, 0),
+          cdPct,
           invoiceNo: inv.invoiceNo,
           indentNumber: inv.indentNumber,
           indentId: inv.indentId,
@@ -249,8 +255,19 @@ function CollectionForm({ data, onSave }) {
     });
   }
 
-  function updateSelected(key, field, value) {
-    setSelected((s) => ({ ...s, [key]: { ...s[key], [field]: value } }));
+  function updateCdPct(key, pct) {
+    setSelected((s) => {
+      const item = s[key];
+      const invoiceValue = item.invoiceValue;
+      const cdAmount = (invoiceValue * Number(pct)) / 100;
+      const inv = pendingInvoices.find((i) => i.key === key);
+      const newAmount = Math.max((inv?.balance || 0) - cdAmount, 0);
+      return { ...s, [key]: { ...item, cdPct: Number(pct), amount: newAmount } };
+    });
+  }
+
+  function updateAmount(key, amount) {
+    setSelected((s) => ({ ...s, [key]: { ...s[key], amount } }));
   }
 
   const allocations = Object.entries(selected)
@@ -258,13 +275,13 @@ function CollectionForm({ data, onSave }) {
     .map(([dispatchId, v]) => {
       const amount = Number(v.amount) || 0;
       const cdPct = Number(v.cdPct) || 0;
-      const cdAmount = (amount * cdPct) / 100;
+      const cdAmount = (Number(v.invoiceValue) * cdPct) / 100; // CD is % of the full Marked Invoice Amount, not of the cash amount
       return { dispatchId, indentId: v.indentId, indentNumber: v.indentNumber, invoiceNo: v.invoiceNo, amount, cdPct, cdAmount };
     });
 
   const totalCash = allocations.reduce((s, a) => s + a.amount, 0);
   const totalCd = allocations.reduce((s, a) => s + a.cdAmount, 0);
-  const canSubmit = buyerId && allocations.length > 0 && totalCash > 0;
+  const canSubmit = buyerId && allocations.length > 0 && totalCash + totalCd > 0;
 
   function submit() {
     if (!canSubmit) return;
@@ -331,34 +348,41 @@ function CollectionForm({ data, onSave }) {
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
                   <input type="checkbox" checked={!!sel?.checked} onChange={() => toggleInvoice(inv)} />
                   <span>
-                    Inv <strong>{inv.invoiceNo || inv.indentNumber}</strong> · {formatDate(inv.invoiceDate)} ·{" "}
-                    Balance {formatINR(inv.balance)} · {inv.days} days old
-                    {inv.suggestedCdPct > 0 && (
-                      <span style={{ color: colors.success }}> · Suggested CD {inv.suggestedCdPct}%</span>
-                    )}
+                    Inv <strong>{inv.invoiceNo || inv.indentNumber}</strong> · {formatDate(inv.invoiceDate)} · Invoice
+                    Value {formatINR(inv.value)} · Balance {formatINR(inv.balance)} · {inv.days} days old
                   </span>
                 </label>
 
                 {sel?.checked && (
                   <div style={{ ...styles.row2, marginTop: 8 }}>
                     <div>
-                      <label style={styles.label}>Amount Received (₹)</label>
+                      <label style={styles.label}>CD Option (based on invoice value)</label>
+                      <select
+                        style={{ ...styles.input, marginBottom: 0 }}
+                        value={sel.cdPct}
+                        onChange={(e) => updateCdPct(inv.key, e.target.value)}
+                      >
+                        {cdOptions.map((opt) => (
+                          <option key={opt.pct + opt.label} value={opt.pct}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={styles.label}>Cash Amount Received (₹)</label>
                       <input
                         style={{ ...styles.input, marginBottom: 0 }}
                         type="number"
                         value={sel.amount}
-                        onChange={(e) => updateSelected(inv.key, "amount", e.target.value)}
+                        onChange={(e) => updateAmount(inv.key, e.target.value)}
                       />
                     </div>
-                    <div>
-                      <label style={styles.label}>CD % applied</label>
-                      <input
-                        style={{ ...styles.input, marginBottom: 0 }}
-                        type="number"
-                        value={sel.cdPct}
-                        onChange={(e) => updateSelected(inv.key, "cdPct", e.target.value)}
-                      />
-                    </div>
+                  </div>
+                )}
+                {sel?.checked && Number(sel.cdPct) > 0 && (
+                  <div style={{ fontSize: 12, color: colors.success, marginTop: 6 }}>
+                    CD Amount: {formatINR((Number(sel.invoiceValue) * Number(sel.cdPct)) / 100)} (on full invoice value)
                   </div>
                 )}
               </div>

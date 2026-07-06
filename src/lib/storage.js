@@ -54,6 +54,17 @@ export function formatINR(n) {
   return "₹" + num.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+// For ledgers: shows "Dr" (customer owes us) or "Cr" (we owe customer / overpaid)
+// instead of a confusing negative sign.
+export function formatBalance(n) {
+  const num = Number(n) || 0;
+  const abs = Math.abs(num);
+  const suffix = num >= 0 ? "Dr" : "Cr";
+  return `${formatINR(abs)} ${suffix}`;
+}
+
+export const ROLL_LENGTH_METERS = 130;
+
 export function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);

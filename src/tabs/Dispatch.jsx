@@ -122,7 +122,7 @@ export default function DispatchTab({ data }) {
           {pendingIndents.map((i) => (
             <div key={i.id} style={{ fontSize: 13, padding: "6px 0" }}>
               <strong>{i.indentNumber}</strong> — {buyerName(i.buyerId)} ← {millName(i.millId)} · {i.productName} ·{" "}
-              {pendingQty(i)} {i.unit} pending
+              {pendingQty(i)} {i.unit} pending · Value: {formatINR(pendingQty(i) * (Number(i.rate) || 0))}
             </div>
           ))}
         </div>

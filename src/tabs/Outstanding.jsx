@@ -2,13 +2,14 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate } from "../lib/storage";
-import { buyerOutstandingInvoices, millOutstandingSummary } from "../lib/calc";
+import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices } from "../lib/calc";
 import { shareOutstanding } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 
 export default function OutstandingTab({ data }) {
   const [view, setView] = useState("customer"); // "customer" | "mill"
   const [buyerFilter, setBuyerFilter] = useState("");
+  const [millFilter, setMillFilter] = useState("");
 
   const buyersToShow = buyerFilter ? data.buyers.filter((b) => b.id === buyerFilter) : data.buyers;
 
@@ -157,38 +158,86 @@ export default function OutstandingTab({ data }) {
 
       {view === "mill" && (
         <>
-          <div style={{ textAlign: "right", marginBottom: 12 }}>
-            <button style={styles.btnPdf} onClick={exportMillPDF}>
-              Export PDF
-            </button>
-          </div>
-          <div style={{ ...styles.card, overflowX: "auto" }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Mill</th>
-                  <th style={styles.th}>Pending Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(millPending).map(([millId, amt]) => (
-                  <tr key={millId}>
-                    <td style={styles.td}>{millName(millId)}</td>
-                    <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(amt)}</td>
-                  </tr>
+          <div style={styles.row2}>
+            <div>
+              <label style={styles.label}>Filter by Mill</label>
+              <select style={styles.input} value={millFilter} onChange={(e) => setMillFilter(e.target.value)}>
+                <option value="">All mills</option>
+                {data.mills.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
                 ))}
-                {Object.keys(millPending).length === 0 && (
-                  <tr>
-                    <td style={styles.td} colSpan={2}>
-                      No pending amounts.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "end" }}>
+              <button style={styles.btnPdf} onClick={exportMillPDF}>
+                Export PDF
+              </button>
+            </div>
           </div>
+
+          <div style={{ ...styles.card, background: colors.indigo, color: "#fff" }}>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>Total Pending (All Mills)</div>
+            <div style={{ fontSize: 22, fontWeight: 800 }}>
+              {formatINR(Object.values(millPending).reduce((s, v) => s + v, 0))}
+            </div>
+          </div>
+
+          {(millFilter ? data.mills.filter((m) => m.id === millFilter) : data.mills)
+            .map((mill) => ({ mill, invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections) }))
+            .filter((x) => x.invoices.length > 0)
+            .map(({ mill, invoices }) => {
+              const millTotal = invoices.reduce((s, i) => s + i.balance, 0);
+              return (
+                <div key={mill.id} style={styles.card}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Mill: {mill.name}</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>Inv Date</th>
+                          <th style={styles.th}>Inv No.</th>
+                          <th style={styles.th}>Party (Buyer)</th>
+                          <th style={styles.th}>Amount</th>
+                          <th style={styles.th}>Credit</th>
+                          <th style={styles.th}>Balance</th>
+                          <th style={styles.th}>Days</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoices.map((inv) => (
+                          <tr key={inv.key}>
+                            <td style={styles.td}>{formatDate(inv.invoiceDate)}</td>
+                            <td style={styles.td}>{inv.invoiceNo || inv.indentNumber}</td>
+                            <td style={styles.td}>{buyerNameById(data, inv.buyerId)}</td>
+                            <td style={styles.td}>{formatINR(inv.value)}</td>
+                            <td style={styles.td}>{formatINR(inv.paidTotal)}</td>
+                            <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(inv.balance)}</td>
+                            <td style={styles.td}>{inv.days}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
+                    Mill Total: {formatINR(millTotal)}
+                  </div>
+                </div>
+              );
+            })}
+
+          {Object.keys(millPending).length === 0 && (
+            <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>
+              No pending amounts.
+            </div>
+          )}
         </>
       )}
     </div>
   );
+}
+
+function buyerNameById(data, id) {
+  return data.buyers.find((b) => b.id === id)?.name || "—";
 }

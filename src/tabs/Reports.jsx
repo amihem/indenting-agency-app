@@ -188,6 +188,44 @@ export default function ReportsTab({ data }) {
       {section === "commission" && (
         <>
           <ReportTable
+            title="Commission — Invoice-wise (detailed)"
+            columns={["Indent No", "Invoice No", "Date", "Buyer", "Mill", "Product", "Qty", "Value", "Comm %", "Comm Amt", "Realized", "Accrued"]}
+            rows={invoices.map((inv) => [
+              inv.indentNumber,
+              inv.invoiceNo || "—",
+              new Date(inv.invoiceDate).toLocaleDateString("en-IN"),
+              buyerName(inv.buyerId),
+              millName(inv.millId),
+              inv.productName,
+              `${inv.qty} ${inv.unit}`,
+              formatINR(inv.value),
+              `${inv.commissionPct}%`,
+              formatINR(inv.commission),
+              formatINR(inv.commissionRealized),
+              formatINR(inv.commissionAccrued),
+            ])}
+            onExport={() =>
+              exportTable(
+                "Commission Report — Invoice-wise",
+                ["Indent No", "Invoice No", "Date", "Buyer", "Mill", "Product", "Qty", "Value", "Comm %", "Comm Amt", "Realized", "Accrued"],
+                invoices.map((inv) => [
+                  inv.indentNumber,
+                  inv.invoiceNo || "—",
+                  new Date(inv.invoiceDate).toLocaleDateString("en-IN"),
+                  buyerName(inv.buyerId),
+                  millName(inv.millId),
+                  inv.productName,
+                  `${inv.qty} ${inv.unit}`,
+                  formatINR(inv.value),
+                  `${inv.commissionPct}%`,
+                  formatINR(inv.commission),
+                  formatINR(inv.commissionRealized),
+                  formatINR(inv.commissionAccrued),
+                ])
+              )
+            }
+          />
+          <ReportTable
             title="Commission — Customer-wise"
             columns={["Buyer", "Realized", "Accrued (Pending)", "Total"]}
             rows={Object.entries(commissionByBuyer).map(([name, v]) => [name, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])}
