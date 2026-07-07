@@ -1,7 +1,7 @@
 // src/tabs/Ledger.jsx
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
-import { formatINR, formatDate, formatBalance } from "../lib/storage";
+import { formatINR, formatDate } from "../lib/storage";
 import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
 
@@ -26,6 +26,12 @@ export default function LedgerTab({ data }) {
 
   const totalBalance = entries.length ? entries[entries.length - 1].runningBalance : 0;
 
+  // New formatter for proper Dr/Cr display without negative signs
+  const formatDrCr = (amount) => {
+    if (amount === 0) return "0";
+    return amount > 0 ? `${formatINR(amount)} Dr` : `${formatINR(Math.abs(amount))} Cr`;
+  };
+
   function exportPDF() {
     const rows = entries
       .map(
@@ -33,10 +39,10 @@ export default function LedgerTab({ data }) {
       <tr>
         <td>${formatDate(e.date)}</td>
         <td>${e.particular}</td>
-        <td>${formatINR(e.debit ? e.debit : 0)}</td>
+        <td>${e.debit ? formatINR(e.debit) : ""}</td>
         <td>${e.credit ? formatINR(e.credit) : ""}</td>
-        <td>${formatBalance(e.balanceAmt)}</td>
-        <td>${formatBalance(e.runningBalance)}</td>
+        <td>${formatDrCr(e.balanceAmt)}</td>
+        <td>${formatDrCr(e.runningBalance)}</td>
       </tr>`
       )
       .join("");
@@ -49,7 +55,7 @@ export default function LedgerTab({ data }) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
+      <p><strong>Total Balance: ${formatDrCr(totalBalance)}</strong></p>
     `;
     printReport(`Ledger - ${entityName}`, html);
   }
@@ -119,8 +125,8 @@ export default function LedgerTab({ data }) {
                   <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particular}</td>
                   <td style={styles.td}>{e.debit ? formatINR(e.debit) : ""}</td>
                   <td style={styles.td}>{e.credit ? formatINR(e.credit) : ""}</td>
-                  <td style={styles.td}>{formatBalance(e.balanceAmt)}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatBalance(e.runningBalance)}</td>
+                  <td style={styles.td}>{formatDrCr(e.balanceAmt)}</td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatDrCr(e.runningBalance)}</td>
                 </tr>
               ))}
               {entries.length === 0 && (
@@ -134,7 +140,7 @@ export default function LedgerTab({ data }) {
           </table>
           {entries.length > 0 && (
             <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
-              Total Balance: {formatBalance(totalBalance)}
+              Total Balance: {formatDrCr(totalBalance)}
             </div>
           )}
         </div>

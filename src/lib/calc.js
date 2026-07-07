@@ -1,16 +1,11 @@
 // src/lib/calc.js
-//
-// CORE MODEL: a Dispatch entry now represents a Mill Invoice.
-// "Sale" and "Commission" are recognized when goods are actually dispatched
-// (invoiced) — not on the full ordered quantity — matching real trading
-// practice: you can't bill or earn commission on goods not yet shipped.
-//
-// All business-rule math lives here in one place, so every screen
-// (Dashboard, Reports, Ledger, Outstanding, Collections) uses the same numbers.
 
-/* ---------- Indent-level (order) math — for the Indent tab table ---------- */
+// Helper: Round to nearest rupee
+export const roundRupee = (val) => Math.round(Number(val) || 0);
+
+/* ---------- Indent-level (order) math ---------- */
 export function indentOrderValue(indent) {
-  return (Number(indent.quantity) || 0) * (Number(indent.rate) || 0);
+  return roundRupee((Number(indent.quantity) || 0) * (Number(indent.rate) || 0));
 }
 
 export function totalDispatchedQty(indent) {
@@ -23,8 +18,6 @@ export function pendingQty(indent) {
 }
 
 /* ---------- Invoices (= dispatches) ---------- */
-// Flattens every dispatch across every indent into one "invoice" record,
-// carrying the buyer/mill/product/rate context it needs from its parent indent.
 export function computeInvoices(indents, mills) {
   const millMap = Object.fromEntries((mills || []).map((m) => [m.id, m]));
   const invoices = [];
@@ -36,7 +29,7 @@ export function computeInvoices(indents, mills) {
 
     (indent.dispatches || []).forEach((d) => {
       const qty = Number(d.qty) || 0;
-      const value = qty * rate;
+      const value = roundRupee(qty * rate);
       invoices.push({
         key: d.id,
         dispatchId: d.id,
@@ -54,10 +47,11 @@ export function computeInvoices(indents, mills) {
         transporter: d.transporter || "",
         dispatchDate: d.date,
         qty,
+        rolls: d.rolls || "", // Added for Dispatch Tab
         rate,
         value,
         commissionPct,
-        commission: (value * commissionPct) / 100,
+        commission: roundRupee((value * commissionPct) / 100),
       });
     });
   });
@@ -72,9 +66,6 @@ export function ageDays(dateStr) {
   return Math.floor((today - d) / (1000 * 60 * 60 * 24));
 }
 
-/* ---------- Cash Discount (CD) policy ---------- */
-// Tiers are configurable in the Collections tab. Each tier: { minDays, maxDays, pct }.
-// If the payment date falls in none of the tiers, CD = 0%.
 export function calcCdPct(days, cdPolicy) {
   const tiers = cdPolicy?.tiers || [];
   for (const t of tiers) {
@@ -83,7 +74,7 @@ export function calcCdPct(days, cdPolicy) {
   return 0;
 }
 
-/* ---------- How much of an invoice has been paid (cash + CD) ---------- */
+/* ---------- Allocation Totals ---------- */
 export function invoiceAllocatedTotals(invoiceKey, collections) {
   let cash = 0;
   let cd = 0;
@@ -95,26 +86,121 @@ export function invoiceAllocatedTotals(invoiceKey, collections) {
       }
     });
   });
-  return { cash, cd, total: cash + cd };
+  return { cash: roundRupee(cash), cd: roundRupee(cd), total: roundRupee(cash + cd) };
 }
 
+/* ---------- SINGLE SOURCE OF TRUTH HELPERS ---------- */
 export function invoiceWithStatus(invoice, collections) {
   const { cash, cd, total } = invoiceAllocatedTotals(invoice.key, collections);
   const balance = Math.max(invoice.value - total, 0);
-  const paidRatio = invoice.value > 0 ? total / invoice.value : 0;
+  
+  // COMMISSION RULE: Only on actual cash received. Exclude CD.
+  const paidCashRatio = invoice.value > 0 ? (cash / invoice.value) : 0;
+  const realized = roundRupee(invoice.commission * paidCashRatio);
+
   return {
     ...invoice,
     paidCash: cash,
     paidCD: cd,
     paidTotal: total,
-    balance,
+    balance: roundRupee(balance),
     days: ageDays(invoice.invoiceDate),
-    commissionRealized: invoice.commission * paidRatio,
-    commissionAccrued: invoice.commission * (1 - paidRatio),
+    commissionRealized: realized,
+    commissionAccrued: roundRupee(invoice.commission - realized),
   };
 }
 
-/* ---------- Buyer outstanding (invoice-wise) ---------- */
+export const getDashboardSummary = (data) => {
+  const invoices = computeInvoices(data.indents, data.mills).map(inv => invoiceWithStatus(inv, data.collections));
+  
+  let totalSale = 0;
+  let totalCommissionRealized = 0;
+  let totalCommissionAccrued = 0;
+  let overdueOutstanding = 0;
+
+  invoices.forEach(inv => {
+    totalSale += inv.value;
+    totalCommissionRealized += inv.commissionRealized;
+    totalCommissionAccrued += inv.commissionAccrued;
+    if (inv.balance > 0 && inv.days > 30) {
+        overdueOutstanding += inv.balance;
+    }
+  });
+
+  // Collections (Cash vs CD)
+  let totalCollectionCash = 0;
+  let totalCD = 0;
+  let todaysCollection = 0;
+  let thisMonthCollection = 0;
+  
+  const todayStr = new Date().toISOString().split('T')[0];
+  const currentMonth = new Date().getMonth();
+
+  data.collections.forEach(c => {
+    const isToday = c.date === todayStr;
+    const isThisMonth = new Date(c.date).getMonth() === currentMonth;
+
+    (c.allocations || []).forEach(a => {
+      const cashAmt = roundRupee(a.amount);
+      const cdAmt = roundRupee(a.cdAmount);
+      
+      totalCollectionCash += cashAmt;
+      totalCD += cdAmt;
+
+      if (isToday) todaysCollection += cashAmt;
+      if (isThisMonth) thisMonthCollection += cashAmt;
+    });
+  });
+
+  // Calculate Notes
+  const totalDebitNotes = (data.debitNotes || []).reduce((sum, n) => sum + roundRupee(n.amount), 0);
+  const totalCreditNotes = (data.creditNotes || []).reduce((sum, n) => sum + roundRupee(n.amount), 0);
+
+  // OUTSTANDING RULE: Invoice - Cash - CD - Credit Notes + Debit Notes
+  const outstanding = roundRupee(totalSale - totalCollectionCash - totalCD - totalCreditNotes + totalDebitNotes);
+
+  // Dispatch Metrics
+  let pendingDispatchQty = 0;
+  let pendingDispatchValue = 0;
+  (data.indents || []).forEach(i => {
+    if (!["cancelled", "closed"].includes(i.status)) {
+        const pQty = pendingQty(i);
+        pendingDispatchQty += pQty;
+        pendingDispatchValue += roundRupee(pQty * (Number(i.rate) || 0));
+    }
+  });
+
+  return {
+    totalSale,
+    totalCollectionCash,
+    totalCD,
+    outstanding,
+    overdueOutstanding,
+    totalCommissionRealized,
+    totalCommissionAccrued,
+    pendingDispatchQty,
+    pendingDispatchValue,
+    todaysCollection,
+    thisMonthCollection,
+    invoices
+  };
+};
+
+export const getAgeingSummary = (invoices) => {
+    const buckets = { current: 0, '0-30': 0, '31-60': 0, '61-90': 0, '91-120': 0, '120+': 0 };
+    invoices.forEach(inv => {
+        if (inv.balance <= 0) return;
+        if (inv.days <= 0) buckets.current += inv.balance;
+        else if (inv.days <= 30) buckets['0-30'] += inv.balance;
+        else if (inv.days <= 60) buckets['31-60'] += inv.balance;
+        else if (inv.days <= 90) buckets['61-90'] += inv.balance;
+        else if (inv.days <= 120) buckets['91-120'] += inv.balance;
+        else buckets['120+'] += inv.balance;
+    });
+    return buckets;
+};
+
+/* ---------- Rest of the original functions (Ledger, Outstanding etc.) ---------- */
 export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
   const invoices = computeInvoices(indents, mills).filter((i) => i.buyerId === buyerId);
   return invoices
@@ -123,20 +209,18 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 }
 
-/* ---------- Mill-wise pending amount (across all buyers) ---------- */
 export function millOutstandingSummary(indents, mills, collections) {
   const invoices = computeInvoices(indents, mills);
   const byMill = {};
   invoices.forEach((inv) => {
     const withStatus = invoiceWithStatus(inv, collections);
     if (withStatus.balance > 0.5) {
-      byMill[inv.millId] = (byMill[inv.millId] || 0) + withStatus.balance;
+      byMill[inv.millId] = roundRupee((byMill[inv.millId] || 0) + withStatus.balance);
     }
   });
-  return byMill; // { millId: totalPendingAmount }
+  return byMill;
 }
 
-/* ---------- Mill-wise pending, broken down date/invoice/party-wise ---------- */
 export function millOutstandingInvoices(millId, indents, mills, collections) {
   const invoices = computeInvoices(indents, mills).filter((i) => i.millId === millId);
   return invoices
@@ -145,7 +229,6 @@ export function millOutstandingInvoices(millId, indents, mills, collections) {
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 }
 
-/* ---------- Pending invoices for a buyer, for the Collection-entry screen ---------- */
 export function pendingInvoicesForCollectionEntry(buyerId, indents, mills, collections, cdPolicy) {
   return buyerOutstandingInvoices(buyerId, indents, mills, collections).map((inv) => ({
     ...inv,
@@ -153,10 +236,6 @@ export function pendingInvoicesForCollectionEntry(buyerId, indents, mills, colle
   }));
 }
 
-/* ---------- Account Ledger (Buyer or Mill) ----------
-   Debit = Mill Invoice value + Debit Notes (buyer only)
-   Credit = Collections + CD amount + Credit Notes (buyer only)
-------------------------------------------------------- */
 export function ledgerEntries({ entityType, entityId, indents, mills, collections, debitNotes, creditNotes }) {
   const invoices = computeInvoices(indents, mills).filter((inv) =>
     entityType === "buyer" ? inv.buyerId === entityId : inv.millId === entityId
@@ -180,7 +259,7 @@ export function ledgerEntries({ entityType, entityId, indents, mills, collection
         entries.push({
           date: n.date,
           particular: `Debit Note${n.reason ? " — " + n.reason : ""}`,
-          debit: Number(n.amount) || 0,
+          debit: roundRupee(n.amount),
           credit: 0,
         })
       );
@@ -191,7 +270,7 @@ export function ledgerEntries({ entityType, entityId, indents, mills, collection
           date: n.date,
           particular: `Credit Note${n.reason ? " — " + n.reason : ""}`,
           debit: 0,
-          credit: Number(n.amount) || 0,
+          credit: roundRupee(n.amount),
         })
       );
   }
@@ -199,21 +278,21 @@ export function ledgerEntries({ entityType, entityId, indents, mills, collection
   (collections || []).forEach((c) => {
     (c.allocations || []).forEach((a) => {
       const inv = invoices.find((i) => i.key === a.dispatchId);
-      if (!inv) return; // allocation belongs to an invoice outside this entity's scope
+      if (!inv) return;
       entries.push({
         date: c.date,
         particular: `Collection (${c.mode}${c.reference ? " · " + c.reference : ""}) — Inv ${
           inv.invoiceNo || inv.indentNumber
         }`,
         debit: 0,
-        credit: Number(a.amount) || 0,
+        credit: roundRupee(a.amount),
       });
       if (Number(a.cdAmount) > 0.5) {
         entries.push({
           date: c.date,
-          particular: `CD ${a.cdPct}% — Inv ${inv.invoiceNo || inv.indentNumber}`,
+          particular: `CD ${a.cdPct || 'Adjusted'}% — Inv ${inv.invoiceNo || inv.indentNumber}`,
           debit: 0,
-          credit: Number(a.cdAmount) || 0,
+          credit: roundRupee(a.cdAmount),
         });
       }
     });

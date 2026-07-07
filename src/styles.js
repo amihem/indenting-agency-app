@@ -1,199 +1,243 @@
 // src/styles.js
-// Shared design tokens and reusable style objects — imported by every tab
-// so the whole app looks consistent without repeating CSS everywhere.
 
 export const colors = {
-  indigo: "#22385C",
-  indigoDark: "#152840",
-  mustard: "#C9932E",
-  bg: "#F7F6F2",
-  card: "#FFFFFF",
-  border: "#E4E1D8",
-  text: "#26282B",
-  textMuted: "#6B6E73",
-  success: "#3A7D5C",
-  danger: "#B84C3C",
+  primary: "#1E3A8A",   
+  secondary: "#3B82F6", 
+  success: "#10B981",   
+  danger: "#EF4444",    
+  mustard: "#F59E0B",   
+  text: "#1F2937",      
+  textMuted: "#6B7280", 
+  border: "#E5E7EB",    
+  bg: "#F9FAFB",        
+  cardBg: "#FFFFFF",    
 };
 
 export const styles = {
-  app: {
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    background: colors.bg,
-    minHeight: "100vh",
-    color: colors.text,
+  app: { 
+    // Ye SAP ka official font stack hai
+    fontFamily: "'72', '72full', Arial,   Helvetica, sans-serif", 
+    backgroundColor: colors.bg, 
+    minHeight: "100vh", 
+    color: colors.text, 
+    paddingBottom: 20 
   },
-  header: {
-    background: colors.indigo,
-    color: "#fff",
-    padding: "16px 20px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 10,
+  header: { 
+    backgroundColor: colors.primary, 
+    color: "#fff", 
+    padding: "16px 20px", 
+    display: "flex", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", 
+    zIndex: 10 
   },
-  brand: { fontSize: 19, fontWeight: 700, letterSpacing: 0.2 },
-  tabBar: {
-    display: "flex",
-    gap: 4,
-    padding: "8px 12px",
-    background: "#fff",
-    borderBottom: `1px solid ${colors.border}`,
-    overflowX: "auto",
+  brand: { 
+    fontSize: 18, 
+    fontWeight: 700, 
+    display: "flex", 
+    alignItems: "center", 
+    gap: 8 
   },
-  tabBtn: (active) => ({
-    padding: "9px 14px",
-    borderRadius: 8,
-    border: "none",
-    background: active ? colors.indigo : "transparent",
-    color: active ? "#fff" : colors.textMuted,
-    fontWeight: 600,
-    fontSize: 13,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
+  tabBar: { 
+    display: "flex", 
+    overflowX: "auto", 
+    backgroundColor: "#fff", 
+    borderBottom: `1px solid ${colors.border}`, 
+    padding: "0 10px", 
+    scrollbarWidth: "none", 
+    WebkitOverflowScrolling: "touch"
+  },
+  tabBtn: (active) => ({ 
+    padding: "14px 16px", 
+    border: "none", 
+    backgroundColor: "transparent", 
+    borderBottom: active ? `3px solid ${colors.primary}` : "3px solid transparent", 
+    color: active ? colors.primary : colors.textMuted, 
+    fontWeight: active ? 700 : 500, 
+    fontSize: 14, 
+    cursor: "pointer", 
+    whiteSpace: "nowrap", 
+    transition: "all 0.2s ease" 
   }),
-  main: { padding: 16, maxWidth: 1080, margin: "0 auto" },
-  card: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  main: { 
+    padding: 16, 
+    maxWidth: 1200, 
+    margin: "0 auto" 
   },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-    flexWrap: "wrap",
-    gap: 8,
+  statGrid: { 
+    display: "grid", 
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", 
+    gap: 12, 
+    marginBottom: 20 
   },
-  h2: { fontSize: 16, fontWeight: 700, margin: 0 },
-  label: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: 600,
-    display: "block",
-    marginBottom: 4,
+  statCard: { 
+    backgroundColor: colors.cardBg, 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 12, 
+    padding: 16, 
+    display: "flex", 
+    flexDirection: "column", 
+    justifyContent: "center", 
+    boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)" 
   },
-  input: {
-    width: "100%",
-    padding: "9px 10px",
-    borderRadius: 8,
-    border: `1px solid ${colors.border}`,
-    fontSize: 14,
-    marginBottom: 12,
-    boxSizing: "border-box",
-    background: "#fff",
-    color: colors.text,
+  statLabel: { 
+    fontSize: 12, 
+    color: colors.textMuted, 
+    marginBottom: 6, 
+    fontWeight: 600 
   },
-  row2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  row3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 },
-  btn: {
-    background: colors.indigo,
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "10px 18px",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
+  statValue: { 
+    fontSize: 20, 
+    fontWeight: 800, 
+    color: colors.text 
   },
-  btnGhost: {
-    background: "transparent",
-    color: colors.indigo,
-    border: `1px solid ${colors.indigo}`,
-    borderRadius: 8,
-    padding: "8px 14px",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
+  card: { 
+    backgroundColor: colors.cardBg, 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 12, 
+    padding: 16, 
+    marginBottom: 16, 
+    boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)" 
   },
-  btnDanger: {
-    background: "transparent",
-    color: colors.danger,
-    border: `1px solid ${colors.danger}`,
-    borderRadius: 8,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
+  sectionHeader: { 
+    display: "flex", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    marginBottom: 16, 
+    flexWrap: "wrap", 
+    gap: 10 
   },
-  btnWhatsapp: {
-    background: "#25D366",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
+  h2: { 
+    fontSize: 18, 
+    fontWeight: 700, 
+    margin: 0, 
+    color: colors.text 
   },
-  btnPdf: {
-    background: colors.mustard,
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "8px 14px",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
+  row2: { 
+    display: "grid", 
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", 
+    gap: 12, 
+    marginBottom: 12 
   },
-  listItem: {
-    border: `1px solid ${colors.border}`,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
+  row3: { 
+    display: "grid", 
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", 
+    gap: 12, 
+    marginBottom: 12 
   },
-  badge: (bg, fg) => ({
-    display: "inline-block",
-    background: bg,
-    color: fg,
-    fontSize: 11,
-    fontWeight: 700,
-    padding: "3px 9px",
-    borderRadius: 999,
-  }),
-  statGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-    gap: 12,
+  label: { 
+    display: "block", 
+    fontSize: 12, 
+    fontWeight: 600, 
+    color: colors.textMuted, 
+    marginBottom: 4 
   },
-  statCard: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: 14,
+  input: { 
+    width: "100%", 
+    padding: "10px 12px", 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 8, 
+    fontSize: 14, 
+    boxSizing: "border-box", 
+    marginBottom: 12, 
+    backgroundColor: "#F9FAFB", 
+    transition: "border-color 0.2s", 
+    outline: "none" 
   },
-  statLabel: { fontSize: 12, color: colors.textMuted, fontWeight: 600 },
-  statValue: { fontSize: 20, fontWeight: 800, marginTop: 4 },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 13,
+  btn: { 
+    backgroundColor: colors.primary, 
+    color: "#fff", 
+    border: "none", 
+    borderRadius: 8, 
+    padding: "10px 16px", 
+    fontSize: 14, 
+    fontWeight: 600, 
+    cursor: "pointer", 
+    transition: "opacity 0.2s" 
   },
-  th: {
-    textAlign: "left",
-    padding: "8px 10px",
-    borderBottom: `2px solid ${colors.border}`,
-    color: colors.textMuted,
-    fontWeight: 700,
-    fontSize: 12,
-    whiteSpace: "nowrap",
+  btnGhost: { 
+    backgroundColor: "transparent", 
+    color: colors.primary, 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 8, 
+    padding: "10px 16px", 
+    fontSize: 14, 
+    fontWeight: 600, 
+    cursor: "pointer" 
   },
-  td: {
-    padding: "8px 10px",
-    borderBottom: `1px solid ${colors.border}`,
-    whiteSpace: "nowrap",
+  btnDanger: { 
+    backgroundColor: "#FEE2E2", 
+    color: colors.danger,       
+    border: "none", 
+    borderRadius: 6, 
+    padding: "6px 12px", 
+    fontSize: 12, 
+    fontWeight: 600, 
+    cursor: "pointer" 
   },
+  btnPdf: { 
+    backgroundColor: "#F3F4F6", 
+    color: colors.text, 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 6, 
+    padding: "6px 12px", 
+    fontSize: 12, 
+    fontWeight: 600, 
+    cursor: "pointer" 
+  },
+  btnWhatsapp: { 
+    backgroundColor: "#DCF8C6", 
+    color: "#075E54",          
+    border: "none", 
+    borderRadius: 6, 
+    padding: "6px 12px", 
+    fontSize: 12, 
+    fontWeight: 600, 
+    cursor: "pointer" 
+  },
+  table: { 
+    width: "100%", 
+    borderCollapse: "collapse", 
+    fontSize: 13 
+  },
+  th: { 
+    textAlign: "left", 
+    padding: "10px 8px", 
+    borderBottom: `2px solid ${colors.border}`, 
+    color: colors.textMuted, 
+    fontWeight: 600, 
+    whiteSpace: "nowrap" 
+  },
+  td: { 
+    padding: "12px 8px", 
+    borderBottom: `1px solid ${colors.border}`, 
+    color: colors.text 
+  },
+  listItem: { 
+    border: `1px solid ${colors.border}`, 
+    borderRadius: 12, 
+    padding: 14, 
+    marginBottom: 12, 
+    backgroundColor: colors.cardBg,
+    boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.03)"
+  },
+  badge: (bg, fg) => ({ 
+    backgroundColor: bg, 
+    color: fg, 
+    padding: "4px 8px", 
+    borderRadius: 4, 
+    fontSize: 11, 
+    fontWeight: 700, 
+    display: "inline-block" 
+  })
 };
 
 export const statusColors = {
-  pending: ["#FDF0DA", "#8A5A11"],
-  confirmed: ["#E3EEFB", "#1D4E89"],
-  partial_dispatch: ["#F0E7FB", "#5B3A94"],
-  fulfilled: ["#E4F4EA", "#237A4B"],
-  closed: ["#E8E8E8", "#4A4A4A"],
-  cancelled: ["#FBE6E4", "#A5301F"],
+  pending: ["#FEF3C7", "#D97706"],          
+  confirmed: ["#E0F2FE", "#0284C7"],        
+  partial_dispatch: ["#DBEAFE", "#2563EB"], 
+  fulfilled: ["#D1FAE5", "#059669"],        
+  closed: ["#F3F4F6", "#4B5563"],           
+  cancelled: ["#FEE2E2", "#DC2626"],        
 };

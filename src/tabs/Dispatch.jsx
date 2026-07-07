@@ -1,7 +1,4 @@
 // src/tabs/Dispatch.jsx
-// One row per dispatch = one Mill Invoice. Shows every field requested:
-// Indent Date, Indent No, Buyer, Mill, Mill Inv, Inv Date, Product, Qty,
-// Rate, Inv Value, Transport, LR No & LR Date — with customer/mill/product filters.
 import React, { useState, useMemo } from "react";
 import { styles, colors } from "../styles";
 import { formatDate, formatINR } from "../lib/storage";
@@ -44,6 +41,7 @@ export default function DispatchTab({ data }) {
         <td>${formatDate(r.invoiceDate)}</td>
         <td>${r.productName}</td>
         <td>${r.qty} ${r.unit}</td>
+        <td>${r.rolls || "—"}</td>
         <td>${formatINR(r.rate)}</td>
         <td>${formatINR(r.value)}</td>
         <td>${r.transporter || "—"}</td>
@@ -59,7 +57,7 @@ export default function DispatchTab({ data }) {
         <thead>
           <tr>
             <th>Indent Date</th><th>Indent No</th><th>Buyer</th><th>Mill</th><th>Mill Inv</th>
-            <th>Inv Date</th><th>Product</th><th>Qty</th><th>Rate</th><th>Inv Value</th>
+            <th>Inv Date</th><th>Product</th><th>Qty</th><th>Rolls</th><th>Rate</th><th>Inv Value</th>
             <th>Transport</th><th>LR No</th><th>LR Date</th>
           </tr>
         </thead>
@@ -122,7 +120,7 @@ export default function DispatchTab({ data }) {
           {pendingIndents.map((i) => (
             <div key={i.id} style={{ fontSize: 13, padding: "6px 0" }}>
               <strong>{i.indentNumber}</strong> — {buyerName(i.buyerId)} ← {millName(i.millId)} · {i.productName} ·{" "}
-              {pendingQty(i)} {i.unit} pending · Value: {formatINR(pendingQty(i) * (Number(i.rate) || 0))}
+              {pendingQty(i)} {i.unit} pending · Value: {formatINR(pendingQty(i) * (Number(i.rate) || 0))} <strong>@ {formatINR(i.rate)}/{i.unit}</strong>
             </div>
           ))}
         </div>
@@ -140,6 +138,7 @@ export default function DispatchTab({ data }) {
               <th style={styles.th}>Inv Date</th>
               <th style={styles.th}>Product</th>
               <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Rolls</th>
               <th style={styles.th}>Rate</th>
               <th style={styles.th}>Inv Value</th>
               <th style={styles.th}>Transport</th>
@@ -163,6 +162,7 @@ export default function DispatchTab({ data }) {
                   <td style={styles.td}>
                     {r.qty} {r.unit}
                   </td>
+                  <td style={styles.td}>{r.rolls || "—"}</td>
                   <td style={styles.td}>{formatINR(r.rate)}</td>
                   <td style={styles.td}>{formatINR(r.value)}</td>
                   <td style={styles.td}>{r.transporter || "—"}</td>
@@ -189,7 +189,7 @@ export default function DispatchTab({ data }) {
             })}
             {rows.length === 0 && (
               <tr>
-                <td style={styles.td} colSpan={14}>
+                <td style={styles.td} colSpan={15}>
                   No dispatch entries found.
                 </td>
               </tr>

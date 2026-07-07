@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate } from "../lib/storage";
-import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices } from "../lib/calc";
+import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices, roundRupee } from "../lib/calc";
 import { shareOutstanding } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 
@@ -20,7 +20,7 @@ export default function OutstandingTab({ data }) {
     }))
     .filter((x) => x.invoices.length > 0);
 
-  const grandTotal = perBuyer.reduce((s, x) => s + x.invoices.reduce((s2, i) => s2 + i.balance, 0), 0);
+  const grandTotal = roundRupee(perBuyer.reduce((s, x) => s + x.invoices.reduce((s2, i) => s2 + i.balance, 0), 0));
 
   const millPending = millOutstandingSummary(data.indents, data.mills, data.collections);
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
@@ -28,7 +28,7 @@ export default function OutstandingTab({ data }) {
   function exportCustomerPDF() {
     let html = `<h2>Customer Outstanding Report</h2><p>As on ${new Date().toLocaleDateString("en-IN")}</p>`;
     perBuyer.forEach(({ buyer, invoices }) => {
-      const total = invoices.reduce((s, i) => s + i.balance, 0);
+      const total = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));
       html += `
         <h3>Party Name: ${buyer.name}</h3>
         <table>
@@ -54,7 +54,7 @@ export default function OutstandingTab({ data }) {
     const rows = Object.entries(millPending)
       .map(([millId, amt]) => `<tr><td>${millName(millId)}</td><td>${formatINR(amt)}</td></tr>`)
       .join("");
-    const total = Object.values(millPending).reduce((s, v) => s + v, 0);
+    const total = roundRupee(Object.values(millPending).reduce((s, v) => s + v, 0));
     const html = `
       <h2>Mill-wise Pending Amount Report</h2>
       <p>As on ${new Date().toLocaleDateString("en-IN")}</p>
@@ -89,16 +89,12 @@ export default function OutstandingTab({ data }) {
               <select style={styles.input} value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
                 <option value="">All buyers</option>
                 {data.buyers.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
+                  <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </div>
             <div style={{ display: "flex", alignItems: "end" }}>
-              <button style={styles.btnPdf} onClick={exportCustomerPDF}>
-                Export PDF
-              </button>
+              <button style={styles.btnPdf} onClick={exportCustomerPDF}>Export PDF</button>
             </div>
           </div>
 
@@ -108,13 +104,11 @@ export default function OutstandingTab({ data }) {
           </div>
 
           {perBuyer.length === 0 && (
-            <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>
-              No outstanding invoices.
-            </div>
+            <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>No outstanding invoices.</div>
           )}
 
           {perBuyer.map(({ buyer, invoices }) => {
-            const partyTotal = invoices.reduce((s, i) => s + i.balance, 0);
+            const partyTotal = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));
             return (
               <div key={buyer.id} style={styles.card}>
                 <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Party Name: {buyer.name}</div>
@@ -164,23 +158,19 @@ export default function OutstandingTab({ data }) {
               <select style={styles.input} value={millFilter} onChange={(e) => setMillFilter(e.target.value)}>
                 <option value="">All mills</option>
                 {data.mills.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
+                  <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </div>
             <div style={{ display: "flex", alignItems: "end" }}>
-              <button style={styles.btnPdf} onClick={exportMillPDF}>
-                Export PDF
-              </button>
+              <button style={styles.btnPdf} onClick={exportMillPDF}>Export PDF</button>
             </div>
           </div>
 
           <div style={{ ...styles.card, background: colors.indigo, color: "#fff" }}>
             <div style={{ fontSize: 12, opacity: 0.85 }}>Total Pending (All Mills)</div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>
-              {formatINR(Object.values(millPending).reduce((s, v) => s + v, 0))}
+              {formatINR(roundRupee(Object.values(millPending).reduce((s, v) => s + v, 0)))}
             </div>
           </div>
 
@@ -188,7 +178,7 @@ export default function OutstandingTab({ data }) {
             .map((mill) => ({ mill, invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections) }))
             .filter((x) => x.invoices.length > 0)
             .map(({ mill, invoices }) => {
-              const millTotal = invoices.reduce((s, i) => s + i.balance, 0);
+              const millTotal = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));
               return (
                 <div key={mill.id} style={styles.card}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Mill: {mill.name}</div>
@@ -226,12 +216,6 @@ export default function OutstandingTab({ data }) {
                 </div>
               );
             })}
-
-          {Object.keys(millPending).length === 0 && (
-            <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>
-              No pending amounts.
-            </div>
-          )}
         </>
       )}
     </div>

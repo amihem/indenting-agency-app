@@ -39,17 +39,15 @@ export default function App() {
     saveData(data);
   }, [data]);
 
-  /* ---------- Mills ---------- */
+  /* ---------- Masters: Mills, Buyers, Products ---------- */
   const addMill = (mill) => setData((d) => ({ ...d, mills: [...d.mills, { id: uid(), ...mill }] }));
   const updateMill = (id, changes) => setData((d) => ({ ...d, mills: d.mills.map((m) => (m.id === id ? { ...m, ...changes } : m)) }));
   const deleteMill = (id) => setData((d) => ({ ...d, mills: d.mills.filter((m) => m.id !== id) }));
 
-  /* ---------- Buyers ---------- */
   const addBuyer = (buyer) => setData((d) => ({ ...d, buyers: [...d.buyers, { id: uid(), ...buyer }] }));
   const updateBuyer = (id, changes) => setData((d) => ({ ...d, buyers: d.buyers.map((b) => (b.id === id ? { ...b, ...changes } : b)) }));
   const deleteBuyer = (id) => setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.id !== id) }));
 
-  /* ---------- Products ---------- */
   const addProduct = (product) => {
     const { gsm, oz } = calcGsmAndOz(product.weightGLM, product.width);
     setData((d) => ({ ...d, products: [...d.products, { id: uid(), ...product, gsm, oz }] }));
@@ -60,10 +58,9 @@ export default function App() {
   };
   const deleteProduct = (id) => setData((d) => ({ ...d, products: d.products.filter((p) => p.id !== id) }));
 
-  /* ---------- CD Policy ---------- */
+  /* ---------- Settings & Import/Restore ---------- */
   const updateCdPolicy = (cdPolicy) => setData((d) => ({ ...d, settings: { ...d.settings, cdPolicy } }));
 
-  /* ---------- Bulk import from Excel (Masters only) ---------- */
   const importMills = (rows) =>
     setData((d) => ({ ...d, mills: [...d.mills, ...rows.map((r) => ({ id: uid(), ...r }))] }));
   const importBuyers = (rows) =>
@@ -80,7 +77,6 @@ export default function App() {
       ],
     }));
 
-  /* ---------- Restore from backup file ---------- */
   const restoreData = (backup) => {
     setData({
       mills: backup.mills || [],
@@ -90,10 +86,11 @@ export default function App() {
       collections: backup.collections || [],
       debitNotes: backup.debitNotes || [],
       creditNotes: backup.creditNotes || [],
+      settings: backup.settings || { cdPolicy: {} },
     });
   };
 
-  /* ---------- Indents ---------- */
+  /* ---------- Indents & Dispatch ---------- */
   const addIndent = (indent) =>
     setData((d) => ({
       ...d,
@@ -115,7 +112,6 @@ export default function App() {
 
   const deleteIndent = (id) => setData((d) => ({ ...d, indents: d.indents.filter((i) => i.id !== id) }));
 
-  /* ---------- Dispatch (nested inside indents) ---------- */
   const addDispatch = (indentId, dispatch) =>
     setData((d) => ({
       ...d,
@@ -162,13 +158,12 @@ export default function App() {
       }),
     }));
 
-  /* ---------- Collections ---------- */
+  /* ---------- Collections & Notes ---------- */
   const addCollection = (collection) =>
     setData((d) => ({ ...d, collections: [{ id: uid(), ...collection }, ...d.collections] }));
   const deleteCollection = (id) =>
     setData((d) => ({ ...d, collections: d.collections.filter((c) => c.id !== id) }));
 
-  /* ---------- Debit / Credit Notes ---------- */
   const addDebitNote = (note) => setData((d) => ({ ...d, debitNotes: [{ id: uid(), ...note }, ...d.debitNotes] }));
   const deleteDebitNote = (id) => setData((d) => ({ ...d, debitNotes: d.debitNotes.filter((n) => n.id !== id) }));
 
@@ -210,9 +205,7 @@ export default function App() {
 
       <div style={styles.main}>
         {tab === "dashboard" && <Dashboard data={data} />}
-
         {tab === "analytics" && <AnalyticsTab data={data} />}
-
         {tab === "indents" && (
           <IndentsTab
             data={data}
@@ -224,9 +217,7 @@ export default function App() {
             deleteDispatch={deleteDispatch}
           />
         )}
-
         {tab === "dispatch" && <DispatchTab data={data} />}
-
         {tab === "collections" && (
           <CollectionsTab
             data={data}
@@ -235,21 +226,11 @@ export default function App() {
             updateCdPolicy={updateCdPolicy}
           />
         )}
-
-        {tab === "debitnotes" && (
-          <DebitNoteTab data={data} addDebitNote={addDebitNote} deleteDebitNote={deleteDebitNote} />
-        )}
-
-        {tab === "creditnotes" && (
-          <CreditNoteTab data={data} addCreditNote={addCreditNote} deleteCreditNote={deleteCreditNote} />
-        )}
-
+        {tab === "debitnotes" && <DebitNoteTab data={data} addDebitNote={addDebitNote} deleteDebitNote={deleteDebitNote} />}
+        {tab === "creditnotes" && <CreditNoteTab data={data} addCreditNote={addCreditNote} deleteCreditNote={deleteCreditNote} />}
         {tab === "outstanding" && <OutstandingTab data={data} />}
-
         {tab === "reports" && <ReportsTab data={data} />}
-
         {tab === "ledger" && <LedgerTab data={data} />}
-
         {tab === "masters" && (
           <MastersTab
             data={data}

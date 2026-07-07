@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate, todayISO } from "../lib/storage";
-import { pendingInvoicesForCollectionEntry, calcCdPct } from "../lib/calc";
+import { pendingInvoicesForCollectionEntry, calcCdPct, roundRupee } from "../lib/calc";
 import { shareCollection } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 
@@ -22,27 +22,29 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
   if (filterTo) visible = visible.filter((c) => c.date <= filterTo);
   const sorted = [...visible].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const grandTotal = visible.reduce(
-    (s, c) => s + (c.allocations || []).reduce((s2, a) => s2 + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0),
+  // Grand total now explicitly tracks ONLY actual cash received
+  const grandTotalCash = visible.reduce(
+    (s, c) => s + (c.allocations || []).reduce((s2, a) => s2 + roundRupee(a.amount), 0),
     0
   );
 
   function exportPDF() {
     const rows = sorted
       .map((c) => {
-        const total = (c.allocations || []).reduce((s, a) => s + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0);
+        const cashTotal = (c.allocations || []).reduce((s, a) => s + roundRupee(a.amount), 0);
+        const cdTotal = (c.allocations || []).reduce((s, a) => s + roundRupee(a.cdAmount), 0);
         const invoices = (c.allocations || []).map((a) => a.invoiceNo || a.indentNumber).join(", ");
-        return `<tr><td>${formatDate(c.date)}</td><td>${buyerName(c.buyerId)}</td><td>${c.mode}</td><td>${c.reference || "—"}</td><td>${invoices}</td><td>${formatINR(total)}</td></tr>`;
+        return `<tr><td>${formatDate(c.date)}</td><td>${buyerName(c.buyerId)}</td><td>${c.mode}</td><td>${c.reference || "—"}</td><td>${invoices}</td><td>${formatINR(cashTotal)}</td><td>${formatINR(cdTotal)}</td></tr>`;
       })
       .join("");
     const html = `
-      <h2>Collection Report</h2>
+      <h2>Collection Report (Cash vs CD)</h2>
       <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
       <table>
-        <thead><tr><th>Date</th><th>Buyer</th><th>Mode</th><th>Reference</th><th>Against Invoice(s)</th><th>Total</th></tr></thead>
+        <thead><tr><th>Date</th><th>Buyer</th><th>Mode</th><th>Reference</th><th>Against Invoice(s)</th><th>Cash Received</th><th>CD Allowed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p><strong>Grand Total: ${formatINR(grandTotal)}</strong></p>
+      <p><strong>Grand Total Cash Collected: ${formatINR(grandTotalCash)}</strong></p>
     `;
     printReport("Collection Report", html);
   }
@@ -91,8 +93,8 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
 
       <div style={{ ...styles.card, background: colors.indigo, color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>Total Collections (filtered)</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{formatINR(grandTotal)}</div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Total Cash Collected (filtered)</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{formatINR(grandTotalCash)}</div>
         </div>
         <button style={styles.btnPdf} onClick={exportPDF}>
           Export PDF
@@ -106,12 +108,12 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
       )}
 
       {sorted.map((c) => {
-        const total = (c.allocations || []).reduce((s, a) => s + (Number(a.amount) || 0) + (Number(a.cdAmount) || 0), 0);
+        const cashTotal = (c.allocations || []).reduce((s, a) => s + roundRupee(a.amount), 0);
         return (
           <div key={c.id} style={styles.listItem}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <strong>{formatINR(total)}</strong> from {buyerName(c.buyerId)}
+                <strong>Cash: {formatINR(cashTotal)}</strong> from {buyerName(c.buyerId)}
                 <div style={{ fontSize: 12, color: colors.textMuted }}>
                   {formatDate(c.date)} · {c.mode} {c.reference ? `· Ref: ${c.reference}` : ""}
                 </div>
@@ -143,8 +145,8 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
 
 /* ---------------- CD Policy editor ---------------- */
 function CdPolicyEditor({ policy, onSave }) {
-  const [maxCreditDays, setMaxCreditDays] = useState(policy.maxCreditDays);
-  const [tiers, setTiers] = useState(policy.tiers);
+  const [maxCreditDays, setMaxCreditDays] = useState(policy?.maxCreditDays || 120);
+  const [tiers, setTiers] = useState(policy?.tiers || []);
 
   function updateTier(i, key, value) {
     const copy = [...tiers];
@@ -190,29 +192,18 @@ function CdPolicyEditor({ policy, onSave }) {
             <label style={styles.label}>CD %</label>
             <input style={{ ...styles.input, marginBottom: 0 }} type="number" value={t.pct} onChange={(e) => updateTier(i, "pct", e.target.value)} />
           </div>
-          <button style={styles.btnDanger} onClick={() => removeTier(i)}>
-            ✕
-          </button>
+          <button style={styles.btnDanger} onClick={() => removeTier(i)}>✕</button>
         </div>
       ))}
 
-      <button style={styles.btnGhost} onClick={addTier}>
-        + Add Tier
-      </button>
+      <button style={styles.btnGhost} onClick={addTier}>+ Add Tier</button>
 
       <div style={{ marginTop: 14 }}>
         <label style={styles.label}>Maximum Credit Period Allowed (days)</label>
-        <input
-          style={{ ...styles.input, width: 160 }}
-          type="number"
-          value={maxCreditDays}
-          onChange={(e) => setMaxCreditDays(e.target.value)}
-        />
+        <input style={{ ...styles.input, width: 160 }} type="number" value={maxCreditDays} onChange={(e) => setMaxCreditDays(e.target.value)} />
       </div>
 
-      <button style={styles.btn} onClick={save}>
-        Save CD Policy
-      </button>
+      <button style={styles.btn} onClick={save}>Save CD Policy</button>
     </div>
   );
 }
@@ -223,10 +214,10 @@ function CollectionForm({ data, onSave }) {
   const [date, setDate] = useState(todayISO());
   const [mode, setMode] = useState("NEFT");
   const [reference, setReference] = useState("");
-  const [selected, setSelected] = useState({}); // { invoiceKey: { checked, amount, cdPct } }
+  const [selected, setSelected] = useState({}); // { invoiceKey: { checked, amount, cdPct, isCustomCd } }
 
-  const cdPolicy = data.settings.cdPolicy;
-  const cdOptions = [{ label: "No CD (0%)", pct: 0 }, ...cdPolicy.tiers.map((t) => ({ label: `${t.label} — ${t.pct}%`, pct: t.pct }))];
+  const cdPolicy = data.settings.cdPolicy || { tiers: [] };
+  const cdOptions = [{ label: "No CD (0%)", pct: 0 }, ...cdPolicy.tiers.map((t) => ({ label: `${t.label} — ${t.pct}%`, pct: t.pct })), { label: "Custom Amount", pct: "custom" }];
 
   const pendingInvoices = buyerId
     ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, data.collections, cdPolicy)
@@ -239,14 +230,16 @@ function CollectionForm({ data, onSave }) {
         return { ...s, [inv.key]: { ...existing, checked: false } };
       }
       const cdPct = inv.suggestedCdPct || 0;
-      const cdAmount = (inv.value * cdPct) / 100;
+      const cdAmount = roundRupee((inv.value * cdPct) / 100);
       return {
         ...s,
         [inv.key]: {
           checked: true,
           invoiceValue: inv.value,
           amount: Math.max(inv.balance - cdAmount, 0),
+          cdAmount: cdAmount,
           cdPct,
+          isCustomCd: false,
           invoiceNo: inv.invoiceNo,
           indentNumber: inv.indentNumber,
           indentId: inv.indentId,
@@ -255,28 +248,31 @@ function CollectionForm({ data, onSave }) {
     });
   }
 
-  function updateCdPct(key, pct) {
+  function updateCdPct(key, val) {
     setSelected((s) => {
       const item = s[key];
+      if (val === "custom") {
+        return { ...s, [key]: { ...item, cdPct: 0, cdAmount: 0, isCustomCd: true } };
+      }
+      const pct = Number(val);
       const invoiceValue = item.invoiceValue;
-      const cdAmount = (invoiceValue * Number(pct)) / 100;
+      const cdAmount = roundRupee((invoiceValue * pct) / 100);
       const inv = pendingInvoices.find((i) => i.key === key);
       const newAmount = Math.max((inv?.balance || 0) - cdAmount, 0);
-      return { ...s, [key]: { ...item, cdPct: Number(pct), amount: newAmount } };
+      return { ...s, [key]: { ...item, cdPct: pct, cdAmount, amount: newAmount, isCustomCd: false } };
     });
   }
 
-  function updateAmount(key, amount) {
-    setSelected((s) => ({ ...s, [key]: { ...s[key], amount } }));
+  function updateAmount(key, field, value) {
+     setSelected((s) => ({ ...s, [key]: { ...s[key], [field]: Number(value) } }));
   }
 
   const allocations = Object.entries(selected)
     .filter(([, v]) => v.checked)
     .map(([dispatchId, v]) => {
-      const amount = Number(v.amount) || 0;
-      const cdPct = Number(v.cdPct) || 0;
-      const cdAmount = (Number(v.invoiceValue) * cdPct) / 100; // CD is % of the full Marked Invoice Amount, not of the cash amount
-      return { dispatchId, indentId: v.indentId, indentNumber: v.indentNumber, invoiceNo: v.invoiceNo, amount, cdPct, cdAmount };
+      const amount = roundRupee(v.amount);
+      const cdAmount = roundRupee(v.cdAmount);
+      return { dispatchId, indentId: v.indentId, indentNumber: v.indentNumber, invoiceNo: v.invoiceNo, amount, cdPct: v.cdPct, cdAmount };
     });
 
   const totalCash = allocations.reduce((s, a) => s + a.amount, 0);
@@ -296,9 +292,7 @@ function CollectionForm({ data, onSave }) {
           <select style={styles.input} value={buyerId} onChange={(e) => { setBuyerId(e.target.value); setSelected({}); }}>
             <option value="">Select buyer</option>
             {data.buyers.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
+              <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
         </div>
@@ -323,66 +317,39 @@ function CollectionForm({ data, onSave }) {
 
       {buyerId && (
         <>
-          <div style={{ fontWeight: 700, fontSize: 13, margin: "10px 0" }}>
-            Pending Invoices — select which ones this payment covers
-          </div>
-
+          <div style={{ fontWeight: 700, fontSize: 13, margin: "10px 0" }}>Pending Invoices</div>
           {pendingInvoices.length === 0 && (
-            <div style={{ color: colors.textMuted, fontSize: 13, marginBottom: 12 }}>
-              No pending invoices for this buyer.
-            </div>
+            <div style={{ color: colors.textMuted, fontSize: 13, marginBottom: 12 }}>No pending invoices.</div>
           )}
-
           {pendingInvoices.map((inv) => {
             const sel = selected[inv.key];
             return (
-              <div
-                key={inv.key}
-                style={{
-                  border: `1px solid ${sel?.checked ? colors.indigo : colors.border}`,
-                  borderRadius: 8,
-                  padding: 10,
-                  marginBottom: 8,
-                }}
-              >
+              <div key={inv.key} style={{ border: `1px solid ${sel?.checked ? colors.indigo : colors.border}`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
                   <input type="checkbox" checked={!!sel?.checked} onChange={() => toggleInvoice(inv)} />
-                  <span>
-                    Inv <strong>{inv.invoiceNo || inv.indentNumber}</strong> · {formatDate(inv.invoiceDate)} · Invoice
-                    Value {formatINR(inv.value)} · Balance {formatINR(inv.balance)} · {inv.days} days old
-                  </span>
+                  <span>Inv <strong>{inv.invoiceNo || inv.indentNumber}</strong> · Val: {formatINR(inv.value)} · Bal: {formatINR(inv.balance)} · {inv.days} days</span>
                 </label>
 
                 {sel?.checked && (
                   <div style={{ ...styles.row2, marginTop: 8 }}>
                     <div>
-                      <label style={styles.label}>CD Option (based on invoice value)</label>
-                      <select
-                        style={{ ...styles.input, marginBottom: 0 }}
-                        value={sel.cdPct}
-                        onChange={(e) => updateCdPct(inv.key, e.target.value)}
-                      >
+                      <label style={styles.label}>CD Option</label>
+                      <select style={{ ...styles.input, marginBottom: 0 }} value={sel.isCustomCd ? "custom" : sel.cdPct} onChange={(e) => updateCdPct(inv.key, e.target.value)}>
                         {cdOptions.map((opt) => (
-                          <option key={opt.pct + opt.label} value={opt.pct}>
-                            {opt.label}
-                          </option>
+                          <option key={opt.pct + opt.label} value={opt.pct}>{opt.label}</option>
                         ))}
                       </select>
                     </div>
+                    {sel.isCustomCd && (
+                         <div>
+                             <label style={styles.label}>CD Amount</label>
+                             <input style={{ ...styles.input, marginBottom: 0 }} type="number" value={sel.cdAmount} onChange={(e) => updateAmount(inv.key, 'cdAmount', e.target.value)} />
+                         </div>
+                    )}
                     <div>
-                      <label style={styles.label}>Cash Amount Received (₹)</label>
-                      <input
-                        style={{ ...styles.input, marginBottom: 0 }}
-                        type="number"
-                        value={sel.amount}
-                        onChange={(e) => updateAmount(inv.key, e.target.value)}
-                      />
+                      <label style={styles.label}>Cash Received (₹)</label>
+                      <input style={{ ...styles.input, marginBottom: 0 }} type="number" value={sel.amount} onChange={(e) => updateAmount(inv.key, 'amount', e.target.value)} />
                     </div>
-                  </div>
-                )}
-                {sel?.checked && Number(sel.cdPct) > 0 && (
-                  <div style={{ fontSize: 12, color: colors.success, marginTop: 6 }}>
-                    CD Amount: {formatINR((Number(sel.invoiceValue) * Number(sel.cdPct)) / 100)} (on full invoice value)
                   </div>
                 )}
               </div>
@@ -393,15 +360,13 @@ function CollectionForm({ data, onSave }) {
 
       {allocations.length > 0 && (
         <div style={{ ...styles.card, background: colors.bg, marginTop: 10 }}>
-          <div style={{ fontSize: 13 }}>Cash: {formatINR(totalCash)}</div>
-          <div style={{ fontSize: 13 }}>CD: {formatINR(totalCd)}</div>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>Total: {formatINR(totalCash + totalCd)}</div>
+          <div style={{ fontSize: 13 }}>Total Cash: {formatINR(totalCash)}</div>
+          <div style={{ fontSize: 13 }}>Total CD: {formatINR(totalCd)}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>Credit Applied: {formatINR(totalCash + totalCd)}</div>
         </div>
       )}
 
-      <button style={{ ...styles.btn, marginTop: 12 }} disabled={!canSubmit} onClick={submit}>
-        Save Collection
-      </button>
+      <button style={{ ...styles.btn, marginTop: 12 }} disabled={!canSubmit} onClick={submit}>Save Collection</button>
     </div>
   );
 }
