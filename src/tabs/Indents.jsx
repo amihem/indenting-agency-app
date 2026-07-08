@@ -567,4 +567,15 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
             </div>
             <div>
               <label style={styles.label}>LR Date</label>
-              <input style={styles.input} type="date" value={form.lrDate} onChange={(e
+              <input style={styles.input} type="date" value={form.lrDate} onChange={(e) => setForm({ ...form, lrDate: e.target.value })} />
+        </div>
+      </div>
+      
+      {/* Agar yahan koi Save/Submit button tha jo cut gaya, toh use yahan add kar lein */}
+      
+    </div>
+  );
+}
+
+export default Indents;
+
