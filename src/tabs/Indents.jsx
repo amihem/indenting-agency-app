@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors, statusColors } from "../styles";
 import { formatINR, formatDate, todayISO, ROLL_LENGTH_METERS } from "../lib/storage";
-import { indentOrderValue, totalDispatchedQty, pendingQty } from "../lib/calc";
+import { indentOrderValue, totalDispatchedQty, pendingQty, roundRupee } from "../lib/calc";
 import { shareIndent } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 
@@ -104,6 +104,7 @@ export default function IndentsTab({
     const value = indentOrderValue(indent);
     const buyer = getBuyer(indent.buyerId);
     const mill = getMill(indent.millId);
+
     const html = `
       <h2>Indent Confirmation</h2>
       <table>
@@ -201,19 +202,11 @@ export default function IndentsTab({
           <label style={styles.label}>Order In</label>
           <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 13 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="radio"
-                checked={form.orderIn === "meters"}
-                onChange={() => setForm({ ...form, orderIn: "meters" })}
-              />
+              <input type="radio" checked={form.orderIn === "meters"} onChange={() => setForm({ ...form, orderIn: "meters" })} />
               Direct Quantity
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="radio"
-                checked={form.orderIn === "rolls"}
-                onChange={() => setForm({ ...form, orderIn: "rolls" })}
-              />
+              <input type="radio" checked={form.orderIn === "rolls"} onChange={() => setForm({ ...form, orderIn: "rolls" })} />
               No. of Rolls ({ROLL_LENGTH_METERS}m/roll)
             </label>
           </div>
@@ -241,12 +234,7 @@ export default function IndentsTab({
             <div style={styles.row2}>
               <div>
                 <label style={styles.label}>Quantity *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  value={form.quantity}
-                  onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                />
+                <input style={styles.input} type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
               </div>
               <div>
                 <label style={styles.label}>Unit</label>
@@ -311,6 +299,7 @@ export default function IndentsTab({
               const dispatched = totalDispatchedQty(indent);
               const pending = pendingQty(indent);
               const [bg, fg] = statusColors[indent.status] || statusColors.pending;
+
               return (
                 <tr key={indent.id}>
                   <td style={styles.td}>
@@ -372,7 +361,12 @@ export default function IndentsTab({
             </select>
           </div>
 
-          <DispatchSection indent={indent} addDispatch={addDispatch} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />
+          <DispatchSection
+            indent={indent}
+            addDispatch={addDispatch}
+            updateDispatch={updateDispatch}
+            deleteDispatch={deleteDispatch}
+          />
 
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button style={styles.btnWhatsapp} onClick={() => shareIndent(indent, getBuyer(indent.buyerId), getMill(indent.millId))}>
@@ -397,24 +391,36 @@ export default function IndentsTab({
 function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }) {
   const [showForm, setShowForm] = useState(false);
   const [editingDispatchId, setEditingDispatchId] = useState(null);
+
   const emptyDispatchForm = {
     date: todayISO(),
     orderIn: "meters",
     rolls: "",
     qty: "",
+    freight: "",
     invoiceNumber: "",
     invoiceDate: todayISO(),
     lrNumber: "",
     lrDate: todayISO(),
     transporter: "",
   };
+
   const [form, setForm] = useState(emptyDispatchForm);
 
   const dispatches = indent.dispatches || [];
   const totalDispatched = totalDispatchedQty(indent);
   const ordered = Number(indent.quantity) || 0;
   const remaining = Math.max(ordered - totalDispatched, 0);
+
   const canSubmit = form.qty && Number(form.qty) > 0;
+
+  // Inline Financial Calculation for Preview
+  const previewTaxableValue = roundRupee((Number(form.qty) || 0) * (Number(indent.rate) || 0));
+  const previewFreight = Number(form.freight) || 0;
+  const previewGst = (previewTaxableValue + previewFreight) * 0.05;
+  const previewExactTotal = previewTaxableValue + previewFreight + previewGst;
+  const previewGrandTotal = Math.round(previewExactTotal);
+  const previewRoundOff = previewGrandTotal - previewExactTotal;
 
   function startEditDispatch(d) {
     setForm({
@@ -422,6 +428,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
       orderIn: d.orderIn || "meters",
       rolls: d.rolls || "",
       qty: d.qty,
+      freight: d.freight || "",
       invoiceNumber: d.invoiceNumber || "",
       invoiceDate: d.invoiceDate || todayISO(),
       lrNumber: d.lrNumber || "",
@@ -434,7 +441,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
 
   function submit() {
     if (!canSubmit) return;
-    const payload = { ...form, qty: Number(form.qty) };
+    const payload = { ...form, qty: Number(form.qty), freight: Number(form.freight) || 0 };
     if (editingDispatchId) {
       updateDispatch(indent.id, editingDispatchId, payload);
     } else {
@@ -474,6 +481,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
       {showForm && (
         <div style={{ ...styles.card, padding: 12, marginBottom: 10 }}>
           {editingDispatchId && <div style={{ fontSize: 12, color: colors.mustard, marginBottom: 8, fontWeight: 700 }}>Editing Dispatch Entry</div>}
+          
           <label style={styles.label}>Dispatch In</label>
           <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 13 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -507,21 +515,39 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
             ) : (
               <div>
                 <label style={styles.label}>Quantity Dispatched *</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  placeholder={`out of ${remaining} remaining`}
-                  value={form.qty}
-                  onChange={(e) => setForm({ ...form, qty: e.target.value })}
-                />
+                <input style={styles.input} type="number" placeholder={`out of ${remaining} remaining`} value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
               </div>
             )}
           </div>
+
           {form.orderIn === "rolls" && (
             <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 10 }}>
               Quantity (auto): {form.qty || 0} {indent.unit}
             </div>
           )}
+
+          <div style={styles.row2}>
+            <div>
+              <label style={styles.label}>Taxable Value (auto)</label>
+              <input style={{ ...styles.input, background: colors.bg }} value={formatINR(previewTaxableValue)} readOnly />
+            </div>
+            <div>
+              <label style={styles.label}>Freight (₹)</label>
+              <input style={styles.input} type="number" placeholder="0" value={form.freight} onChange={(e) => setForm({ ...form, freight: e.target.value })} />
+            </div>
+          </div>
+
+          <div style={{ ...styles.card, padding: 10, marginBottom: 12, background: colors.bg }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+              <span>GST @ 5% (on Value + Freight)</span> <strong>{formatINR(previewGst)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+              <span>Round Off (auto)</span> <strong>{previewRoundOff >= 0 ? "+" : ""}{previewRoundOff.toFixed(2)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderTop: `1px solid ${colors.border}`, paddingTop: 6, marginTop: 4 }}>
+              <span style={{ fontWeight: 700 }}>Grand Total</span> <strong style={{ color: colors.primary }}>{formatINR(previewGrandTotal)}</strong>
+            </div>
+          </div>
 
           <div style={styles.row2}>
             <div>
@@ -533,6 +559,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
               <input style={styles.input} type="date" value={form.invoiceDate} onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })} />
             </div>
           </div>
+
           <div style={styles.row2}>
             <div>
               <label style={styles.label}>LR Number</label>
@@ -540,36 +567,4 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
             </div>
             <div>
               <label style={styles.label}>LR Date</label>
-              <input style={styles.input} type="date" value={form.lrDate} onChange={(e) => setForm({ ...form, lrDate: e.target.value })} />
-            </div>
-          </div>
-          <label style={styles.label}>Transporter</label>
-          <input style={styles.input} value={form.transporter} onChange={(e) => setForm({ ...form, transporter: e.target.value })} />
-          <button style={styles.btn} disabled={!canSubmit} onClick={submit}>
-            {editingDispatchId ? "Save Changes" : "Save Dispatch Entry"}
-          </button>
-        </div>
-      )}
-
-      {dispatches.map((disp) => (
-        <div key={disp.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "6px 0", borderBottom: `1px solid ${colors.border}`, gap: 6 }}>
-          <div>
-            <strong>{disp.qty} {indent.unit}</strong> on {formatDate(disp.date)}
-            {disp.rolls ? ` (${disp.rolls} rolls)` : ""}
-            {disp.invoiceNumber ? ` · Inv: ${disp.invoiceNumber}` : ""}
-            {disp.lrNumber ? ` · LR: ${disp.lrNumber}` : ""}
-            {disp.transporter ? ` · ${disp.transporter}` : ""}
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button style={{ ...styles.btnGhost, padding: "3px 8px", fontSize: 11 }} onClick={() => startEditDispatch(disp)}>
-              Edit
-            </button>
-            <button style={{ ...styles.btnDanger, padding: "3px 8px", fontSize: 11 }} onClick={() => handleDelete(disp)}>
-              Delete
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+              <input style={styles.input} type="date" value={form.lrDate} onChange={(e

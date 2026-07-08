@@ -1,9 +1,6 @@
 // src/lib/calc.js
-
-// Helper: Round to nearest rupee
 export const roundRupee = (val) => Math.round(Number(val) || 0);
 
-/* ---------- Indent-level (order) math ---------- */
 export function indentOrderValue(indent) {
   return roundRupee((Number(indent.quantity) || 0) * (Number(indent.rate) || 0));
 }
@@ -17,7 +14,6 @@ export function pendingQty(indent) {
   return Math.max(ordered - totalDispatchedQty(indent), 0);
 }
 
-/* ---------- Invoices (= dispatches) ---------- */
 export function computeInvoices(indents, mills) {
   const millMap = Object.fromEntries((mills || []).map((m) => [m.id, m]));
   const invoices = [];
@@ -29,7 +25,15 @@ export function computeInvoices(indents, mills) {
 
     (indent.dispatches || []).forEach((d) => {
       const qty = Number(d.qty) || 0;
-      const value = roundRupee(qty * rate);
+      const freight = Number(d.freight) || 0;
+      
+      const baseValue = qty * rate;
+      const gst = (baseValue + freight) * 0.05;
+      const exactTotal = baseValue + freight + gst;
+      
+      const value = Math.round(exactTotal); // Final rounded Invoice Value
+      const roundOff = value - exactTotal;
+
       invoices.push({
         key: d.id,
         dispatchId: d.id,
@@ -47,9 +51,13 @@ export function computeInvoices(indents, mills) {
         transporter: d.transporter || "",
         dispatchDate: d.date,
         qty,
-        rolls: d.rolls || "", // Added for Dispatch Tab
+        rolls: d.rolls || "",
         rate,
-        value,
+        baseValue,
+        freight,
+        gst,
+        roundOff,
+        value, // Replaces old value logic
         commissionPct,
         commission: roundRupee((value * commissionPct) / 100),
       });
@@ -74,7 +82,6 @@ export function calcCdPct(days, cdPolicy) {
   return 0;
 }
 
-/* ---------- Allocation Totals ---------- */
 export function invoiceAllocatedTotals(invoiceKey, collections) {
   let cash = 0;
   let cd = 0;
@@ -89,12 +96,10 @@ export function invoiceAllocatedTotals(invoiceKey, collections) {
   return { cash: roundRupee(cash), cd: roundRupee(cd), total: roundRupee(cash + cd) };
 }
 
-/* ---------- SINGLE SOURCE OF TRUTH HELPERS ---------- */
 export function invoiceWithStatus(invoice, collections) {
   const { cash, cd, total } = invoiceAllocatedTotals(invoice.key, collections);
   const balance = Math.max(invoice.value - total, 0);
   
-  // COMMISSION RULE: Only on actual cash received. Exclude CD.
   const paidCashRatio = invoice.value > 0 ? (cash / invoice.value) : 0;
   const realized = roundRupee(invoice.commission * paidCashRatio);
 
@@ -127,7 +132,6 @@ export const getDashboardSummary = (data) => {
     }
   });
 
-  // Collections (Cash vs CD)
   let totalCollectionCash = 0;
   let totalCD = 0;
   let todaysCollection = 0;
@@ -152,14 +156,11 @@ export const getDashboardSummary = (data) => {
     });
   });
 
-  // Calculate Notes
   const totalDebitNotes = (data.debitNotes || []).reduce((sum, n) => sum + roundRupee(n.amount), 0);
   const totalCreditNotes = (data.creditNotes || []).reduce((sum, n) => sum + roundRupee(n.amount), 0);
 
-  // OUTSTANDING RULE: Invoice - Cash - CD - Credit Notes + Debit Notes
   const outstanding = roundRupee(totalSale - totalCollectionCash - totalCD - totalCreditNotes + totalDebitNotes);
 
-  // Dispatch Metrics
   let pendingDispatchQty = 0;
   let pendingDispatchValue = 0;
   (data.indents || []).forEach(i => {
@@ -172,6 +173,7 @@ export const getDashboardSummary = (data) => {
 
   return {
     totalSale,
+    totalPaid: totalCollectionCash + totalCD, // Used for Dashboard UI
     totalCollectionCash,
     totalCD,
     outstanding,
@@ -187,9 +189,10 @@ export const getDashboardSummary = (data) => {
 };
 
 export const getAgeingSummary = (invoices) => {
-    const buckets = { current: 0, '0-30': 0, '31-60': 0, '61-90': 0, '91-120': 0, '120+': 0 };
+    const buckets = { current: 0, '0-30': 0, '31-60': 0, '61-90': 0, '91-120': 0, '120+': 0, total: 0 };
     invoices.forEach(inv => {
         if (inv.balance <= 0) return;
+        buckets.total += inv.balance;
         if (inv.days <= 0) buckets.current += inv.balance;
         else if (inv.days <= 30) buckets['0-30'] += inv.balance;
         else if (inv.days <= 60) buckets['31-60'] += inv.balance;
@@ -200,7 +203,6 @@ export const getAgeingSummary = (invoices) => {
     return buckets;
 };
 
-/* ---------- Rest of the original functions (Ledger, Outstanding etc.) ---------- */
 export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
   const invoices = computeInvoices(indents, mills).filter((i) => i.buyerId === buyerId);
   return invoices
@@ -302,6 +304,6 @@ export function ledgerEntries({ entityType, entityId, indents, mills, collection
   let running = 0;
   return entries.map((e) => {
     running += e.debit - e.credit;
-    return { ...e, balanceAmt: e.debit - e.credit, runningBalance: running };
+    return { ...e, runningBalance: running }; // Removed balanceAmt
   });
 }

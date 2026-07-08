@@ -6,7 +6,7 @@ import { computeInvoices, invoiceWithStatus, getAgeingSummary } from "../lib/cal
 import { printReport } from "../lib/print";
 
 export default function ReportsTab({ data }) {
-  const [reportType, setReportType] = useState("outstanding");
+  const [reportType, setReportType] = useState("ageing");
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
@@ -18,111 +18,85 @@ export default function ReportsTab({ data }) {
   function handleExport() {
     let html = `<h2>${reportType.toUpperCase()} REPORT</h2><p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>`;
     
-    if (reportType === "outstanding") {
-      const rows = allInvoices.filter(i => i.balance > 0).map(r => `
-        <tr><td>${formatDate(r.invoiceDate)}</td><td>${r.invoiceNo || r.indentNumber}</td>
-        <td>${buyerName(r.buyerId)}</td><td>${millName(r.millId)}</td>
-        <td>${formatINR(r.value)}</td><td>${formatINR(r.paidTotal)}</td><td>${formatINR(r.balance)}</td></tr>
-      `).join("");
-      html += `<table><thead><tr><th>Date</th><th>Invoice</th><th>Buyer</th><th>Mill</th><th>Inv Value</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows}</tbody></table>`;
-    } 
-    else if (reportType === "commission") {
-      const rows = allInvoices.filter(i => i.commission > 0).map(r => `
-        <tr><td>${formatDate(r.invoiceDate)}</td><td>${r.invoiceNo || r.indentNumber}</td>
-        <td>${buyerName(r.buyerId)}</td><td>${formatINR(r.value)}</td>
-        <td>${formatINR(r.commissionRealized)}</td><td>${formatINR(r.commissionAccrued)}</td></tr>
-      `).join("");
-      html += `<table><thead><tr><th>Date</th><th>Invoice</th><th>Buyer</th><th>Inv Value</th><th>Realized Comm.</th><th>Pending Comm.</th></tr></thead><tbody>${rows}</tbody></table>`;
-    }
-    else if (reportType === "ageing") {
-      const buckets = getAgeingSummary(allInvoices);
-      html += `<table><thead><tr><th>Bucket (Days)</th><th>Amount Pending</th></tr></thead><tbody>
-        <tr><td>Current</td><td>${formatINR(buckets.current)}</td></tr>
-        <tr><td>0-30 Days</td><td>${formatINR(buckets['0-30'])}</td></tr>
-        <tr><td>31-60 Days</td><td>${formatINR(buckets['31-60'])}</td></tr>
-        <tr><td>61-90 Days</td><td>${formatINR(buckets['61-90'])}</td></tr>
-        <tr><td>91-120 Days</td><td>${formatINR(buckets['91-120'])}</td></tr>
-        <tr><td>120+ Days</td><td>${formatINR(buckets['120+'])}</td></tr>
-      </tbody></table>`;
+    if (reportType === "ageing") {
+      html += `<h3>Overall Ageing Summary</h3><table><thead><tr><th>Bucket</th><th>Amount Pending</th></tr></thead><tbody>`;
+      const allBuckets = getAgeingSummary(allInvoices);
+      ['current', '0-30', '31-60', '61-90', '91-120', '120+'].forEach(b => {
+          html += `<tr><td>${b} Days</td><td>${formatINR(allBuckets[b])}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+
+      data.buyers.forEach(buyer => {
+         const buyerInvs = allInvoices.filter(i => i.buyerId === buyer.id);
+         const buckets = getAgeingSummary(buyerInvs);
+         if (buckets.total > 0) {
+             html += `<h4>${buyer.name} (Total: ${formatINR(buckets.total)})</h4><table><thead><tr><th>Bucket</th><th>Amount</th></tr></thead><tbody>`;
+             ['current', '0-30', '31-60', '61-90', '91-120', '120+'].forEach(b => {
+                 if(buckets[b] > 0) html += `<tr><td>${b} Days</td><td>${formatINR(buckets[b])}</td></tr>`;
+             });
+             html += `</tbody></table>`;
+         }
+      });
     }
 
     printReport(`${reportType.toUpperCase()}_Report`, html);
   }
 
   const renderTable = () => {
-    if (reportType === "outstanding") {
-      const outstandingInvoices = allInvoices.filter(i => i.balance > 0);
-      return (
-        <table style={styles.table}>
-          <thead><tr><th style={styles.th}>Date</th><th style={styles.th}>Invoice / Indent</th><th style={styles.th}>Buyer</th><th style={styles.th}>Mill</th><th style={styles.th}>Balance</th></tr></thead>
-          <tbody>
-            {outstandingInvoices.map(inv => (
-              <tr key={inv.key}>
-                <td style={styles.td}>{formatDate(inv.invoiceDate)}</td>
-                <td style={styles.td}>{inv.invoiceNo || inv.indentNumber}</td>
-                <td style={styles.td}>{buyerName(inv.buyerId)}</td>
-                <td style={styles.td}>{millName(inv.millId)}</td>
-                <td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(inv.balance)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      );
-    }
-
     if (reportType === "ageing") {
-      const buckets = getAgeingSummary(allInvoices);
+      const allBuckets = getAgeingSummary(allInvoices);
       return (
-        <table style={{...styles.table, width: '50%'}}>
-          <thead><tr><th style={styles.th}>Ageing Bucket</th><th style={styles.th}>Amount Pending</th></tr></thead>
-          <tbody>
-            <tr><td style={styles.td}>Current (Not Overdue)</td><td style={styles.td}>{formatINR(buckets.current)}</td></tr>
-            <tr><td style={styles.td}>0 - 30 Days</td><td style={styles.td}>{formatINR(buckets['0-30'])}</td></tr>
-            <tr><td style={styles.td}>31 - 60 Days</td><td style={{...styles.td, color: colors.mustard}}>{formatINR(buckets['31-60'])}</td></tr>
-            <tr><td style={styles.td}>61 - 90 Days</td><td style={{...styles.td, color: colors.danger}}>{formatINR(buckets['61-90'])}</td></tr>
-            <tr><td style={styles.td}>91 - 120 Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(buckets['91-120'])}</td></tr>
-            <tr><td style={styles.td}>120+ Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(buckets['120+'])}</td></tr>
-          </tbody>
-        </table>
-      );
-    }
-
-    if (reportType === "commission") {
-        return (
-          <table style={styles.table}>
-            <thead><tr><th style={styles.th}>Date</th><th style={styles.th}>Invoice</th><th style={styles.th}>Buyer</th><th style={styles.th}>Realized Comm.</th><th style={styles.th}>Pending Comm.</th></tr></thead>
+        <div>
+          <table style={{...styles.table, width: '100%', marginBottom: 20}}>
+            <thead><tr><th style={styles.th} colSpan="2">Overall Ageing Summary</th></tr></thead>
             <tbody>
-              {allInvoices.map(inv => (
-                <tr key={inv.key}>
-                  <td style={styles.td}>{formatDate(inv.invoiceDate)}</td>
-                  <td style={styles.td}>{inv.invoiceNo || inv.indentNumber}</td>
-                  <td style={styles.td}>{buyerName(inv.buyerId)}</td>
-                  <td style={{...styles.td, color: colors.success}}>{formatINR(inv.commissionRealized)}</td>
-                  <td style={{...styles.td, color: colors.mustard}}>{formatINR(inv.commissionAccrued)}</td>
-                </tr>
-              ))}
+              <tr><td style={styles.td}>Current (Not Overdue)</td><td style={styles.td}>{formatINR(allBuckets.current)}</td></tr>
+              <tr><td style={styles.td}>0 - 30 Days</td><td style={styles.td}>{formatINR(allBuckets['0-30'])}</td></tr>
+              <tr><td style={styles.td}>31 - 60 Days</td><td style={{...styles.td, color: colors.mustard}}>{formatINR(allBuckets['31-60'])}</td></tr>
+              <tr><td style={styles.td}>61 - 90 Days</td><td style={{...styles.td, color: colors.danger}}>{formatINR(allBuckets['61-90'])}</td></tr>
+              <tr><td style={styles.td}>91 - 120 Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(allBuckets['91-120'])}</td></tr>
+              <tr><td style={styles.td}>120+ Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(allBuckets['120+'])}</td></tr>
+              <tr><td style={{...styles.td, fontWeight: 800}}>Total Outstanding</td><td style={{...styles.td, fontWeight: 800}}>{formatINR(allBuckets.total)}</td></tr>
             </tbody>
           </table>
-        );
-      }
+
+          <div style={{fontWeight: 700, fontSize: 14, marginBottom: 12}}>Customer-wise Breakdown</div>
+          {data.buyers.map(buyer => {
+              const buyerInvs = allInvoices.filter(i => i.buyerId === buyer.id);
+              const buckets = getAgeingSummary(buyerInvs);
+              if (buckets.total === 0) return null;
+              
+              return (
+                  <div key={buyer.id} style={{marginBottom: 16, padding: 12, border: `1px solid ${colors.border}`, borderRadius: 8}}>
+                      <div style={{fontWeight: 700, color: colors.primary, marginBottom: 8}}>{buyer.name} — Total: {formatINR(buckets.total)}</div>
+                      <div style={{display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12}}>
+                          {buckets.current > 0 && <div>Current: {formatINR(buckets.current)}</div>}
+                          {buckets['0-30'] > 0 && <div>0-30: {formatINR(buckets['0-30'])}</div>}
+                          {buckets['31-60'] > 0 && <div style={{color: colors.mustard}}>31-60: {formatINR(buckets['31-60'])}</div>}
+                          {buckets['61-90'] > 0 && <div style={{color: colors.danger}}>61-90: {formatINR(buckets['61-90'])}</div>}
+                          {buckets['91-120'] > 0 && <div style={{color: colors.danger}}>91-120: {formatINR(buckets['91-120'])}</div>}
+                          {buckets['120+'] > 0 && <div style={{color: colors.danger, fontWeight: 'bold'}}>120+: {formatINR(buckets['120+'])}</div>}
+                      </div>
+                  </div>
+              );
+          })}
+        </div>
+      );
+    }
   };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div style={styles.h2}>System Reports</div>
-        <button style={styles.btnPdf} onClick={handleExport}>Export PDF / Print</button>
+        <button style={styles.btnPdf} onClick={handleExport}>Export PDF</button>
       </div>
-
       <div style={{ ...styles.card, marginBottom: 16 }}>
-        <label style={{ ...styles.label, display: "inline-block", marginRight: 12 }}>Select Report:</label>
-        <select style={{ ...styles.input, width: "300px", display: "inline-block" }} value={reportType} onChange={(e) => setReportType(e.target.value)}>
-          <option value="outstanding">Outstanding Invoices</option>
+        <label style={{ ...styles.label }}>Select Report:</label>
+        <select style={{ ...styles.input }} value={reportType} onChange={(e) => setReportType(e.target.value)}>
           <option value="ageing">Outstanding Ageing Summary</option>
-          <option value="commission">Commission Report</option>
         </select>
       </div>
-
       <div style={{ ...styles.card, overflowX: "auto" }}>
         {renderTable()}
       </div>
