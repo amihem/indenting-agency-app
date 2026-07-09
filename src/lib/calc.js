@@ -126,6 +126,11 @@ export function invoiceWithStatus(invoice, collections) {
   };
 }
 
+/* ---------- Simple rupee rounding helper (used across Collections screen) ---------- */
+export function roundRupee(amount) {
+  return Math.round(Number(amount) || 0);
+}
+
 /* ---------- Dashboard summary (totals across all invoices) ---------- */
 export function getDashboardSummary(data) {
   const invoices = computeInvoices(data?.indents, data?.mills).map((inv) =>
