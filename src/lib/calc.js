@@ -126,6 +126,31 @@ export function invoiceWithStatus(invoice, collections) {
   };
 }
 
+/* ---------- Dashboard summary (totals across all invoices) ---------- */
+export function getDashboardSummary(data) {
+  const invoices = computeInvoices(data?.indents, data?.mills).map((inv) =>
+    invoiceWithStatus(inv, data?.collections)
+  );
+
+  return invoices.reduce(
+    (acc, inv) => {
+      acc.totalSale += inv.value;
+      acc.totalPaid += inv.paidTotal;
+      acc.outstanding += inv.balance;
+      acc.totalCommissionRealized += inv.commissionRealized;
+      acc.totalCommissionAccrued += inv.commissionAccrued;
+      return acc;
+    },
+    {
+      totalSale: 0,
+      totalPaid: 0,
+      outstanding: 0,
+      totalCommissionRealized: 0,
+      totalCommissionAccrued: 0,
+    }
+  );
+}
+
 /* ---------- Buyer outstanding (invoice-wise) ---------- */
 export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
   const invoices = computeInvoices(indents, mills).filter((i) => i.buyerId === buyerId);
