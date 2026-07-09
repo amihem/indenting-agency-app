@@ -36,7 +36,15 @@ export function computeInvoices(indents, mills) {
 
     (indent.dispatches || []).forEach((d) => {
       const qty = Number(d.qty) || 0;
-      const value = qty * rate;
+      const unitValue = Math.round(qty * rate);
+      const freight = Number(d.freight) || 0;
+      const gstBase = unitValue + freight;
+      const gstAmount = Math.round(gstBase * 0.05 * 100) / 100; // 5% GST on (unit value + freight)
+      const subtotal = unitValue + freight + gstAmount;
+      const invoiceValue = Math.round(subtotal); // final invoice amount, whole rupees
+      const roundOff = Math.round((invoiceValue - subtotal) * 100) / 100;
+      const commission = Math.round(unitValue * (commissionPct / 100)); // commission on goods value only, not GST/freight
+
       invoices.push({
         key: d.id,
         dispatchId: d.id,
@@ -55,9 +63,13 @@ export function computeInvoices(indents, mills) {
         dispatchDate: d.date,
         qty,
         rate,
-        value,
+        unitValue,
+        freight,
+        gstAmount,
+        roundOff,
+        value: invoiceValue,
         commissionPct,
-        commission: (value * commissionPct) / 100,
+        commission,
       });
     });
   });
@@ -121,6 +133,32 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
     .map((inv) => invoiceWithStatus(inv, collections))
     .filter((inv) => inv.balance > 0.5)
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+}
+
+/* ---------- Ageing buckets (for Reports: Customer-wise Outstanding Ageing) ---------- */
+export const AGEING_BUCKETS = ["0-30", "31-60", "61-90", "91-120", "120+"];
+
+export function ageBucket(days) {
+  const d = Math.max(days, 0);
+  if (d <= 30) return "0-30";
+  if (d <= 60) return "31-60";
+  if (d <= 90) return "61-90";
+  if (d <= 120) return "91-120";
+  return "120+";
+}
+
+export function customerWiseAgeing(buyers, indents, mills, collections) {
+  return buyers
+    .map((buyer) => {
+      const invoices = buyerOutstandingInvoices(buyer.id, indents, mills, collections);
+      const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "91-120": 0, "120+": 0 };
+      invoices.forEach((inv) => {
+        buckets[ageBucket(inv.days)] += inv.balance;
+      });
+      const total = invoices.reduce((s, i) => s + i.balance, 0);
+      return { buyer, buckets, total };
+    })
+    .filter((x) => x.total > 0.5);
 }
 
 /* ---------- Mill-wise pending amount (across all buyers) ---------- */
