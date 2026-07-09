@@ -1,7 +1,7 @@
 // src/tabs/Ledger.jsx
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
-import { formatINR, formatDate } from "../lib/storage";
+import { formatINR, formatDate, formatBalance } from "../lib/storage";
 import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
 
@@ -26,11 +26,6 @@ export default function LedgerTab({ data }) {
 
   const totalBalance = entries.length ? entries[entries.length - 1].runningBalance : 0;
 
-  const formatDrCr = (amount) => {
-    if (amount === 0) return "0";
-    return amount > 0 ? `${formatINR(amount)} Dr` : `${formatINR(Math.abs(amount))} Cr`;
-  };
-
   function exportPDF() {
     const rows = entries
       .map(
@@ -38,9 +33,9 @@ export default function LedgerTab({ data }) {
       <tr>
         <td>${formatDate(e.date)}</td>
         <td>${e.particular}</td>
-        <td>${e.debit ? formatINR(e.debit) : ""}</td>
+        <td>${formatINR(e.debit ? e.debit : 0)}</td>
         <td>${e.credit ? formatINR(e.credit) : ""}</td>
-        <td>${formatDrCr(e.runningBalance)}</td>
+        <td>${formatBalance(e.runningBalance)}</td>
       </tr>`
       )
       .join("");
@@ -49,11 +44,11 @@ export default function LedgerTab({ data }) {
       <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
       <table>
         <thead>
-          <tr><th>Date</th><th>Particular</th><th>Debit Amt</th><th>Credit Amt</th><th>Balance</th></tr>
+          <tr><th>Doc/Transaction Date</th><th>Particular</th><th>Debit Amt</th><th>Credit Amt</th><th>Balance</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p><strong>Total Balance: ${formatDrCr(totalBalance)}</strong></p>
+      <p><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
     `;
     printReport(`Ledger - ${entityName}`, html);
   }
@@ -63,14 +58,23 @@ export default function LedgerTab({ data }) {
       <div style={styles.sectionHeader}>
         <div style={styles.h2}>Account Ledger</div>
         {entityId && (
-          <button style={styles.btnPdf} onClick={exportPDF}>Export PDF</button>
+          <button style={styles.btnPdf} onClick={exportPDF}>
+            Export PDF
+          </button>
         )}
       </div>
 
       <div style={styles.row2}>
         <div>
           <label style={styles.label}>Ledger Type</label>
-          <select style={styles.input} value={entityType} onChange={(e) => { setEntityType(e.target.value); setEntityId(""); }}>
+          <select
+            style={styles.input}
+            value={entityType}
+            onChange={(e) => {
+              setEntityType(e.target.value);
+              setEntityId("");
+            }}
+          >
             <option value="buyer">Buyer</option>
             <option value="mill">Mill</option>
           </select>
@@ -80,18 +84,26 @@ export default function LedgerTab({ data }) {
           <select style={styles.input} value={entityId} onChange={(e) => setEntityId(e.target.value)}>
             <option value="">Select {entityType}</option>
             {entities.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
             ))}
           </select>
         </div>
       </div>
+
+      {!entityId && (
+        <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>
+          Select a {entityType} to view their ledger.
+        </div>
+      )}
 
       {entityId && (
         <div style={{ ...styles.card, overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Date</th>
+                <th style={styles.th}>Doc / Transaction Date</th>
                 <th style={styles.th}>Particular</th>
                 <th style={styles.th}>Debit Amt</th>
                 <th style={styles.th}>Credit Amt</th>
@@ -105,14 +117,23 @@ export default function LedgerTab({ data }) {
                   <td style={{ ...styles.td, whiteSpace: "normal" }}>{e.particular}</td>
                   <td style={styles.td}>{e.debit ? formatINR(e.debit) : ""}</td>
                   <td style={styles.td}>{e.credit ? formatINR(e.credit) : ""}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatDrCr(e.runningBalance)}</td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatBalance(e.runningBalance)}</td>
                 </tr>
               ))}
               {entries.length === 0 && (
-                <tr><td style={styles.td} colSpan={5}>No transactions yet.</td></tr>
+                <tr>
+                  <td style={styles.td} colSpan={5}>
+                    No transactions yet.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
+          {entries.length > 0 && (
+            <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
+              Total Balance: {formatBalance(totalBalance)}
+            </div>
+          )}
         </div>
       )}
     </div>
