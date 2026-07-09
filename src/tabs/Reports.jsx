@@ -1,105 +1,320 @@
 // src/tabs/Reports.jsx
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { styles, colors } from "../styles";
-import { formatINR, formatDate } from "../lib/storage";
-import { computeInvoices, invoiceWithStatus, getAgeingSummary } from "../lib/calc";
+import { formatINR } from "../lib/storage";
+import { computeInvoices, invoiceWithStatus, customerWiseAgeing, AGEING_BUCKETS } from "../lib/calc";
 import { printReport } from "../lib/print";
 
+function groupSum(list, keyFn, valueFn) {
+  const map = {};
+  list.forEach((item) => {
+    const key = keyFn(item);
+    map[key] = (map[key] || 0) + valueFn(item);
+  });
+  return map;
+}
+
+function ReportTable({ title, rows, columns, onExport }) {
+  return (
+    <div style={styles.card}>
+      <div style={styles.sectionHeader}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
+        <button style={styles.btnPdf} onClick={onExport}>
+          Export PDF
+        </button>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              {columns.map((c) => (
+                <th style={styles.th} key={c}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={idx}>
+                {row.map((cell, i) => (
+                  <td style={styles.td} key={i}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td style={styles.td} colSpan={columns.length}>
+                  No data yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function exportTable(title, columns, rows) {
+  const html = `
+    <h2>${title}</h2>
+    <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
+    <table>
+      <thead><tr>${columns.map((c) => `<th>${c}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table>
+  `;
+  printReport(title, html);
+}
+
 export default function ReportsTab({ data }) {
-  const [reportType, setReportType] = useState("ageing");
+  const [section, setSection] = useState("sales");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
-  const allInvoices = useMemo(() => {
-    return computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
-  }, [data.indents, data.mills, data.collections]);
+  let invoices = computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
+  if (fromDate) invoices = invoices.filter((i) => i.invoiceDate >= fromDate);
+  if (toDate) invoices = invoices.filter((i) => i.invoiceDate <= toDate);
 
-  function handleExport() {
-    let html = `<h2>${reportType.toUpperCase()} REPORT</h2><p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>`;
-    
-    if (reportType === "ageing") {
-      html += `<h3>Overall Ageing Summary</h3><table><thead><tr><th>Bucket</th><th>Amount Pending</th></tr></thead><tbody>`;
-      const allBuckets = getAgeingSummary(allInvoices);
-      ['current', '0-30', '31-60', '61-90', '91-120', '120+'].forEach(b => {
-          html += `<tr><td>${b} Days</td><td>${formatINR(allBuckets[b])}</td></tr>`;
-      });
-      html += `</tbody></table>`;
+  /* ---------- Sales reports (based on dispatched/invoiced value) ---------- */
+  const salesByBuyer = groupSum(invoices, (i) => buyerName(i.buyerId), (i) => i.value);
+  const salesByProduct = groupSum(invoices, (i) => i.productName || "—", (i) => i.value);
+  const salesByMill = groupSum(invoices, (i) => millName(i.millId), (i) => i.value);
 
-      data.buyers.forEach(buyer => {
-         const buyerInvs = allInvoices.filter(i => i.buyerId === buyer.id);
-         const buckets = getAgeingSummary(buyerInvs);
-         if (buckets.total > 0) {
-             html += `<h4>${buyer.name} (Total: ${formatINR(buckets.total)})</h4><table><thead><tr><th>Bucket</th><th>Amount</th></tr></thead><tbody>`;
-             ['current', '0-30', '31-60', '61-90', '91-120', '120+'].forEach(b => {
-                 if(buckets[b] > 0) html += `<tr><td>${b} Days</td><td>${formatINR(buckets[b])}</td></tr>`;
-             });
-             html += `</tbody></table>`;
-         }
-      });
-    }
+  /* ---------- Commission reports ---------- */
+  const commissionByBuyer = {};
+  invoices.forEach((inv) => {
+    const name = buyerName(inv.buyerId);
+    if (!commissionByBuyer[name]) commissionByBuyer[name] = { realized: 0, accrued: 0 };
+    commissionByBuyer[name].realized += inv.commissionRealized;
+    commissionByBuyer[name].accrued += inv.commissionAccrued;
+  });
 
-    printReport(`${reportType.toUpperCase()}_Report`, html);
-  }
+  const commissionByMill = {};
+  invoices.forEach((inv) => {
+    const name = millName(inv.millId);
+    if (!commissionByMill[name]) commissionByMill[name] = { realized: 0, accrued: 0 };
+    commissionByMill[name].realized += inv.commissionRealized;
+    commissionByMill[name].accrued += inv.commissionAccrued;
+  });
 
-  const renderTable = () => {
-    if (reportType === "ageing") {
-      const allBuckets = getAgeingSummary(allInvoices);
-      return (
-        <div>
-          <table style={{...styles.table, width: '100%', marginBottom: 20}}>
-            <thead><tr><th style={styles.th} colSpan="2">Overall Ageing Summary</th></tr></thead>
-            <tbody>
-              <tr><td style={styles.td}>Current (Not Overdue)</td><td style={styles.td}>{formatINR(allBuckets.current)}</td></tr>
-              <tr><td style={styles.td}>0 - 30 Days</td><td style={styles.td}>{formatINR(allBuckets['0-30'])}</td></tr>
-              <tr><td style={styles.td}>31 - 60 Days</td><td style={{...styles.td, color: colors.mustard}}>{formatINR(allBuckets['31-60'])}</td></tr>
-              <tr><td style={styles.td}>61 - 90 Days</td><td style={{...styles.td, color: colors.danger}}>{formatINR(allBuckets['61-90'])}</td></tr>
-              <tr><td style={styles.td}>91 - 120 Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(allBuckets['91-120'])}</td></tr>
-              <tr><td style={styles.td}>120+ Days</td><td style={{...styles.td, color: colors.danger, fontWeight: 'bold'}}>{formatINR(allBuckets['120+'])}</td></tr>
-              <tr><td style={{...styles.td, fontWeight: 800}}>Total Outstanding</td><td style={{...styles.td, fontWeight: 800}}>{formatINR(allBuckets.total)}</td></tr>
-            </tbody>
-          </table>
+  /* ---------- Collection by buyer (respecting date filter on collection date) ---------- */
+  let collections = data.collections;
+  if (fromDate) collections = collections.filter((c) => c.date >= fromDate);
+  if (toDate) collections = collections.filter((c) => c.date <= toDate);
+  const collectionByBuyer = groupSum(
+    collections,
+    (c) => buyerName(c.buyerId),
+    (c) => (c.allocations || []).reduce((s, a) => s + (Number(a.amount) || 0), 0)
+  );
+  const cdByBuyer = groupSum(
+    collections,
+    (c) => buyerName(c.buyerId),
+    (c) => (c.allocations || []).reduce((s, a) => s + (Number(a.cdAmount) || 0), 0)
+  );
 
-          <div style={{fontWeight: 700, fontSize: 14, marginBottom: 12}}>Customer-wise Breakdown</div>
-          {data.buyers.map(buyer => {
-              const buyerInvs = allInvoices.filter(i => i.buyerId === buyer.id);
-              const buckets = getAgeingSummary(buyerInvs);
-              if (buckets.total === 0) return null;
-              
-              return (
-                  <div key={buyer.id} style={{marginBottom: 16, padding: 12, border: `1px solid ${colors.border}`, borderRadius: 8}}>
-                      <div style={{fontWeight: 700, color: colors.primary, marginBottom: 8}}>{buyer.name} — Total: {formatINR(buckets.total)}</div>
-                      <div style={{display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12}}>
-                          {buckets.current > 0 && <div>Current: {formatINR(buckets.current)}</div>}
-                          {buckets['0-30'] > 0 && <div>0-30: {formatINR(buckets['0-30'])}</div>}
-                          {buckets['31-60'] > 0 && <div style={{color: colors.mustard}}>31-60: {formatINR(buckets['31-60'])}</div>}
-                          {buckets['61-90'] > 0 && <div style={{color: colors.danger}}>61-90: {formatINR(buckets['61-90'])}</div>}
-                          {buckets['91-120'] > 0 && <div style={{color: colors.danger}}>91-120: {formatINR(buckets['91-120'])}</div>}
-                          {buckets['120+'] > 0 && <div style={{color: colors.danger, fontWeight: 'bold'}}>120+: {formatINR(buckets['120+'])}</div>}
-                      </div>
-                  </div>
-              );
-          })}
-        </div>
-      );
-    }
-  };
+  const ageingRows = customerWiseAgeing(data.buyers, data.indents, data.mills, data.collections);
+  const ageingSummary = { "0-30": 0, "31-60": 0, "61-90": 0, "91-120": 0, "120+": 0 };
+  ageingRows.forEach((r) => AGEING_BUCKETS.forEach((b) => (ageingSummary[b] += r.buckets[b])));
+  const ageingGrandTotal = Object.values(ageingSummary).reduce((s, v) => s + v, 0);
+
+  const sections = [
+    ["sales", "Sales Report"],
+    ["commission", "Commission Report"],
+    ["collection", "Collection Report"],
+    ["ageing", "Outstanding Ageing"],
+  ];
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div style={styles.h2}>System Reports</div>
-        <button style={styles.btnPdf} onClick={handleExport}>Export PDF</button>
+      <div style={styles.h2}>Reports</div>
+
+      <div style={styles.row2}>
+        <div>
+          <label style={styles.label}>From Date</label>
+          <input style={styles.input} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label style={styles.label}>To Date</label>
+          <input style={styles.input} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
       </div>
-      <div style={{ ...styles.card, marginBottom: 16 }}>
-        <label style={{ ...styles.label }}>Select Report:</label>
-        <select style={{ ...styles.input }} value={reportType} onChange={(e) => setReportType(e.target.value)}>
-          <option value="ageing">Outstanding Ageing Summary</option>
-        </select>
+
+      <div style={{ display: "flex", gap: 6, margin: "10px 0 16px" }}>
+        {sections.map(([key, label]) => (
+          <button
+            key={key}
+            style={{
+              background: section === key ? colors.indigo : "#fff",
+              color: section === key ? "#fff" : colors.textMuted,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              padding: "8px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            onClick={() => setSection(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-      <div style={{ ...styles.card, overflowX: "auto" }}>
-        {renderTable()}
-      </div>
+
+      {section === "sales" && (
+        <>
+          <ReportTable
+            title="Sales — Customer-wise (based on dispatched value)"
+            columns={["Buyer", "Total Sales"]}
+            rows={Object.entries(salesByBuyer).map(([name, val]) => [name, formatINR(val)])}
+            onExport={() =>
+              exportTable("Sales Report — Customer-wise", ["Buyer", "Total Sales"], Object.entries(salesByBuyer).map(([n, v]) => [n, formatINR(v)]))
+            }
+          />
+          <ReportTable
+            title="Sales — Product-wise"
+            columns={["Product", "Total Sales"]}
+            rows={Object.entries(salesByProduct).map(([name, val]) => [name, formatINR(val)])}
+            onExport={() =>
+              exportTable("Sales Report — Product-wise", ["Product", "Total Sales"], Object.entries(salesByProduct).map(([n, v]) => [n, formatINR(v)]))
+            }
+          />
+          <ReportTable
+            title="Sales — Supplier (Mill) wise"
+            columns={["Mill", "Total Sales"]}
+            rows={Object.entries(salesByMill).map(([name, val]) => [name, formatINR(val)])}
+            onExport={() =>
+              exportTable("Sales Report — Supplier-wise", ["Mill", "Total Sales"], Object.entries(salesByMill).map(([n, v]) => [n, formatINR(v)]))
+            }
+          />
+        </>
+      )}
+
+      {section === "commission" && (
+        <>
+          <ReportTable
+            title="Commission — Invoice-wise (detailed)"
+            columns={["Indent No", "Invoice No", "Date", "Buyer", "Mill", "Product", "Qty", "Value", "Comm %", "Comm Amt", "Realized", "Accrued"]}
+            rows={invoices.map((inv) => [
+              inv.indentNumber,
+              inv.invoiceNo || "—",
+              new Date(inv.invoiceDate).toLocaleDateString("en-IN"),
+              buyerName(inv.buyerId),
+              millName(inv.millId),
+              inv.productName,
+              `${inv.qty} ${inv.unit}`,
+              formatINR(inv.value),
+              `${inv.commissionPct}%`,
+              formatINR(inv.commission),
+              formatINR(inv.commissionRealized),
+              formatINR(inv.commissionAccrued),
+            ])}
+            onExport={() =>
+              exportTable(
+                "Commission Report — Invoice-wise",
+                ["Indent No", "Invoice No", "Date", "Buyer", "Mill", "Product", "Qty", "Value", "Comm %", "Comm Amt", "Realized", "Accrued"],
+                invoices.map((inv) => [
+                  inv.indentNumber,
+                  inv.invoiceNo || "—",
+                  new Date(inv.invoiceDate).toLocaleDateString("en-IN"),
+                  buyerName(inv.buyerId),
+                  millName(inv.millId),
+                  inv.productName,
+                  `${inv.qty} ${inv.unit}`,
+                  formatINR(inv.value),
+                  `${inv.commissionPct}%`,
+                  formatINR(inv.commission),
+                  formatINR(inv.commissionRealized),
+                  formatINR(inv.commissionAccrued),
+                ])
+              )
+            }
+          />
+          <ReportTable
+            title="Commission — Customer-wise"
+            columns={["Buyer", "Realized", "Accrued (Pending)", "Total"]}
+            rows={Object.entries(commissionByBuyer).map(([name, v]) => [name, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])}
+            onExport={() =>
+              exportTable(
+                "Commission Report — Customer-wise",
+                ["Buyer", "Realized", "Accrued", "Total"],
+                Object.entries(commissionByBuyer).map(([n, v]) => [n, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])
+              )
+            }
+          />
+          <ReportTable
+            title="Commission — Supplier (Mill) wise"
+            columns={["Mill", "Realized", "Accrued (Pending)", "Total"]}
+            rows={Object.entries(commissionByMill).map(([name, v]) => [name, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])}
+            onExport={() =>
+              exportTable(
+                "Commission Report — Supplier-wise",
+                ["Mill", "Realized", "Accrued", "Total"],
+                Object.entries(commissionByMill).map(([n, v]) => [n, formatINR(v.realized), formatINR(v.accrued), formatINR(v.realized + v.accrued)])
+              )
+            }
+          />
+        </>
+      )}
+
+      {section === "collection" && (
+        <ReportTable
+          title="Collection — Customer-wise"
+          columns={["Buyer", "Cash Collected", "CD Given", "Total"]}
+          rows={Object.entries(collectionByBuyer).map(([name, val]) => [
+            name,
+            formatINR(val),
+            formatINR(cdByBuyer[name] || 0),
+            formatINR(val + (cdByBuyer[name] || 0)),
+          ])}
+          onExport={() =>
+            exportTable(
+              "Collection Report — Customer-wise",
+              ["Buyer", "Cash Collected", "CD Given", "Total"],
+              Object.entries(collectionByBuyer).map(([n, v]) => [n, formatINR(v), formatINR(cdByBuyer[n] || 0), formatINR(v + (cdByBuyer[n] || 0))])
+            )
+          }
+        />
+      )}
+
+      {section === "ageing" && (
+        <>
+          <ReportTable
+            title="Customer-wise Outstanding Ageing"
+            columns={["Buyer", ...AGEING_BUCKETS.map((b) => `${b} days`), "Total"]}
+            rows={ageingRows.map((r) => [
+              r.buyer.name,
+              ...AGEING_BUCKETS.map((b) => formatINR(r.buckets[b])),
+              formatINR(r.total),
+            ])}
+            onExport={() =>
+              exportTable(
+                "Customer-wise Outstanding Ageing",
+                ["Buyer", ...AGEING_BUCKETS.map((b) => `${b} days`), "Total"],
+                ageingRows.map((r) => [r.buyer.name, ...AGEING_BUCKETS.map((b) => formatINR(r.buckets[b])), formatINR(r.total)])
+              )
+            }
+          />
+          <ReportTable
+            title="Outstanding Ageing — Summary"
+            columns={["Ageing Bucket", "Amount Pending"]}
+            rows={[...AGEING_BUCKETS.map((b) => [`${b} days`, formatINR(ageingSummary[b])]), ["Grand Total", formatINR(ageingGrandTotal)]]}
+            onExport={() =>
+              exportTable(
+                "Outstanding Ageing — Summary",
+                ["Ageing Bucket", "Amount Pending"],
+                [...AGEING_BUCKETS.map((b) => [`${b} days`, formatINR(ageingSummary[b])]), ["Grand Total", formatINR(ageingGrandTotal)]]
+              )
+            }
+          />
+        </>
+      )}
     </div>
   );
 }
