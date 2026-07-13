@@ -70,8 +70,8 @@ function exportTable(title, columns, rows) {
   printReport(title, html);
 }
 
-export default function ReportsTab({ data }) {
-  const [section, setSection] = useState("sales");
+export default function ReportsTab({ data, initialSection }) {
+  const [section, setSection] = useState(initialSection || "sales");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 

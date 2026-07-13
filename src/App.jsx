@@ -33,6 +33,7 @@ const TABS = [
 export default function App() {
   const [data, setData] = useState(loadData);
   const [tab, setTab] = useState("dashboard");
+  const [reportSection, setReportSection] = useState("sales");
   const [showDataTools, setShowDataTools] = useState(false);
 
   useEffect(() => {
@@ -204,7 +205,16 @@ export default function App() {
       </div>
 
       <div style={styles.main}>
-        {tab === "dashboard" && <Dashboard data={data} />}
+        {tab === "dashboard" && (
+          <Dashboard
+            data={data}
+            setTab={setTab}
+            goToReports={(section) => {
+              setReportSection(section);
+              setTab("reports");
+            }}
+          />
+        )}
         {tab === "analytics" && <AnalyticsTab data={data} />}
         {tab === "indents" && (
           <IndentsTab
@@ -229,7 +239,7 @@ export default function App() {
         {tab === "debitnotes" && <DebitNoteTab data={data} addDebitNote={addDebitNote} deleteDebitNote={deleteDebitNote} />}
         {tab === "creditnotes" && <CreditNoteTab data={data} addCreditNote={addCreditNote} deleteCreditNote={deleteCreditNote} />}
         {tab === "outstanding" && <OutstandingTab data={data} />}
-        {tab === "reports" && <ReportsTab data={data} />}
+        {tab === "reports" && <ReportsTab data={data} initialSection={reportSection} />}
         {tab === "ledger" && <LedgerTab data={data} />}
         {tab === "masters" && (
           <MastersTab
