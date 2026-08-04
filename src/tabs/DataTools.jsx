@@ -2,9 +2,20 @@
 import React, { useState, useRef } from "react";
 import { styles, colors } from "../styles";
 import { downloadBackup, readBackupFile } from "../lib/backup";
-import { parseExcelFile, mapMillRow, mapBuyerRow, mapProductRow } from "../lib/excelImport";
+import { parseExcelFile, mapMillRow, mapBuyerRow, mapProductRow, mapIndentRow, mapDispatchRow, mapDebitNoteRow, mapCreditNoteRow, mapPaymentRow } from "../lib/excelImport";
 
-export default function DataTools({ data, restoreData, importMills, importBuyers, importProducts }) {
+export default function DataTools({
+  data,
+  restoreData,
+  importMills,
+  importBuyers,
+  importProducts,
+  importIndents,
+  importDispatches,
+  importDebitNotesBulk,
+  importCreditNotesBulk,
+  importPayments,
+}) {
   return (
     <div>
       <div style={styles.h2}>Backup, Restore &amp; Import</div>
@@ -40,6 +51,59 @@ export default function DataTools({ data, restoreData, importMills, importBuyers
         mapRow={mapProductRow}
         onImport={importProducts}
         renderPreview={(p) => `${p.name} · ${p.unit} · Width: ${p.width || "—"}"`}
+      />
+
+      <div style={{ ...styles.h2, marginTop: 28 }}>Import Historical Transactions</div>
+      <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
+        For old years' data (past Indents, Dispatch, Notes, Payments). Import in this
+        order — Indents first, then Dispatch, then Notes/Payments — since each depends
+        on the ones before it. Missing Buyer/Mill/Product names are auto-created so no
+        data is lost; fill their details later in Masters.
+      </p>
+
+      <ImportSection
+        title="1. Import Indents"
+        expectedColumns={["Indent No", "Indent Date", "Buyer Name", "Mill Name", "Product Name", "Shade", "Order Qty", "Unit", "Rate", "Status"]}
+        mapRow={mapIndentRow}
+        onImport={importIndents}
+        isValidRow={(r) => r.buyerName && r.millName && r.productName}
+        renderPreview={(r) => `${r.indentNumber || "(auto)"} · ${r.buyerName} ← ${r.millName} · ${r.productName} · ${r.quantity} ${r.unit} @ ₹${r.rate}`}
+      />
+
+      <ImportSection
+        title="2. Import Dispatch"
+        expectedColumns={["Indent No", "Dispatch Date", "Qty", "Mill Invoice No", "Invoice Date", "LR No", "LR Date", "Transporter", "Freight"]}
+        mapRow={mapDispatchRow}
+        onImport={importDispatches}
+        isValidRow={(r) => r.indentNumber && r.qty}
+        renderPreview={(r) => `Indent ${r.indentNumber} · ${r.qty} on ${r.date || "?"} · Inv: ${r.invoiceNumber || "—"}`}
+      />
+
+      <ImportSection
+        title="3. Import Debit Notes"
+        expectedColumns={["Buyer Name", "Date", "Amount", "Reason"]}
+        mapRow={mapDebitNoteRow}
+        onImport={importDebitNotesBulk}
+        isValidRow={(r) => r.buyerName && r.amount}
+        renderPreview={(r) => `${r.buyerName} · ₹${r.amount} · ${r.date || "?"}`}
+      />
+
+      <ImportSection
+        title="4. Import Credit Notes"
+        expectedColumns={["Buyer Name", "Date", "Amount", "Reason"]}
+        mapRow={mapCreditNoteRow}
+        onImport={importCreditNotesBulk}
+        isValidRow={(r) => r.buyerName && r.amount}
+        renderPreview={(r) => `${r.buyerName} · ₹${r.amount} · ${r.date || "?"}`}
+      />
+
+      <ImportSection
+        title="5. Import Payments (Collections)"
+        expectedColumns={["Buyer Name", "Date", "Amount", "Mode", "Reference", "Against Invoice No", "CD %", "CD Amount"]}
+        mapRow={mapPaymentRow}
+        onImport={importPayments}
+        isValidRow={(r) => r.buyerName && r.amount}
+        renderPreview={(r) => `${r.buyerName} · ₹${r.amount} · ${r.mode} ${r.againstInvoiceNo ? "· vs Inv " + r.againstInvoiceNo : "(FIFO match)"}`}
       />
     </div>
   );
@@ -104,10 +168,11 @@ function RestoreSection({ restoreData }) {
 }
 
 /* ---------------- Generic Excel Import section ---------------- */
-function ImportSection({ title, expectedColumns, mapRow, onImport, renderPreview }) {
+function ImportSection({ title, expectedColumns, mapRow, onImport, renderPreview, isValidRow }) {
   const fileRef = useRef(null);
   const [preview, setPreview] = useState([]);
   const [error, setError] = useState(null);
+  const validCheck = isValidRow || ((r) => r.name);
 
   async function handleFile(e) {
     const file = e.target.files[0];
@@ -116,7 +181,7 @@ function ImportSection({ title, expectedColumns, mapRow, onImport, renderPreview
     setPreview([]);
     try {
       const rows = await parseExcelFile(file);
-      const mapped = rows.map(mapRow).filter((r) => r.name); // skip blank rows
+      const mapped = rows.map(mapRow).filter(validCheck);
       if (mapped.length === 0) {
         setError("No valid rows found. Check that your column headers match the expected format below.");
         return;

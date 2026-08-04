@@ -11,7 +11,7 @@ export function parseExcelFile(file) {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
+        const workbook = XLSX.read(data, { type: "array", cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -23,6 +23,25 @@ export function parseExcelFile(file) {
     reader.onerror = () => reject(new Error("Could not read the file."));
     reader.readAsArrayBuffer(file);
   });
+}
+
+// Converts a cell value (JS Date, "DD-MM-YYYY", "DD/MM/YYYY", or ISO string)
+// into a clean "YYYY-MM-DD" string the app uses everywhere.
+export function toISODate(value) {
+  if (!value) return "";
+  if (value instanceof Date && !isNaN(value)) return value.toISOString().slice(0, 10);
+  const str = String(value).trim();
+  if (!str) return "";
+  const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (dmy) {
+    let [, d, m, y] = dmy;
+    if (y.length === 2) y = "20" + y;
+    return `${y.padStart(4, "0")}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  const parsed = new Date(str);
+  if (!isNaN(parsed)) return parsed.toISOString().slice(0, 10);
+  return "";
 }
 
 // Looks up a value in a row by trying several possible header spellings,
@@ -68,5 +87,64 @@ export function mapProductRow(row) {
     width: pick(row, ["Width", "Width (inches)"]),
     finish: String(pick(row, ["Finish"])).trim(),
     packing: String(pick(row, ["Packing"])).trim(),
+  };
+}
+
+/* ---------------- Historical transaction imports ---------------- */
+
+export function mapIndentRow(row) {
+  return {
+    indentNumber: String(pick(row, ["Indent No", "Indent Number"])).trim(),
+    date: toISODate(pick(row, ["Indent Date", "Date"])),
+    buyerName: String(pick(row, ["Buyer Name", "Buyer"])).trim(),
+    millName: String(pick(row, ["Mill Name", "Mill", "Supplier Name", "Supplier"])).trim(),
+    productName: String(pick(row, ["Product Name", "Product"])).trim(),
+    shade: String(pick(row, ["Shade", "Shade / Dyeing", "Dyeing"])).trim(),
+    quantity: Number(pick(row, ["Order Qty", "Qty", "Quantity"])) || 0,
+    unit: String(pick(row, ["Unit"])).trim() || "meters",
+    rate: Number(pick(row, ["Rate"])) || 0,
+    deliveryInstruction: String(pick(row, ["Delivery Instruction"])).trim(),
+    transport: String(pick(row, ["Transport"])).trim(),
+    packingInstruction: String(pick(row, ["Packing Instruction"])).trim(),
+    status: String(pick(row, ["Status"])).trim().toLowerCase() || "fulfilled",
+  };
+}
+
+export function mapDispatchRow(row) {
+  return {
+    indentNumber: String(pick(row, ["Indent No", "Indent Number"])).trim(),
+    date: toISODate(pick(row, ["Dispatch Date", "Date"])),
+    qty: Number(pick(row, ["Qty", "Quantity"])) || 0,
+    invoiceNumber: String(pick(row, ["Mill Invoice No", "Invoice No", "Mill Invoice Number"])).trim(),
+    invoiceDate: toISODate(pick(row, ["Invoice Date"])),
+    lrNumber: String(pick(row, ["LR No", "LR Number"])).trim(),
+    lrDate: toISODate(pick(row, ["LR Date"])),
+    transporter: String(pick(row, ["Transporter"])).trim(),
+    freight: Number(pick(row, ["Freight"])) || 0,
+  };
+}
+
+export function mapDebitNoteRow(row) {
+  return {
+    buyerName: String(pick(row, ["Buyer Name", "Buyer"])).trim(),
+    date: toISODate(pick(row, ["Date"])),
+    amount: Number(pick(row, ["Amount"])) || 0,
+    reason: String(pick(row, ["Reason"])).trim(),
+  };
+}
+
+export const mapCreditNoteRow = mapDebitNoteRow;
+
+export function mapPaymentRow(row) {
+  const cdAmountRaw = pick(row, ["CD Amount"]);
+  return {
+    buyerName: String(pick(row, ["Buyer Name", "Buyer"])).trim(),
+    date: toISODate(pick(row, ["Date"])),
+    amount: Number(pick(row, ["Amount"])) || 0,
+    mode: String(pick(row, ["Mode"])).trim() || "NEFT",
+    reference: String(pick(row, ["Reference"])).trim(),
+    againstInvoiceNo: String(pick(row, ["Against Invoice No", "Invoice No"])).trim(),
+    cdPct: Number(pick(row, ["CD %", "CD Pct"])) || 0,
+    cdAmount: cdAmountRaw !== "" ? Number(cdAmountRaw) : null,
   };
 }
