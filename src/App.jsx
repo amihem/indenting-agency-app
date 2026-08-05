@@ -5,6 +5,7 @@ import { loadData, saveData, uid, todayISO } from "./lib/storage";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { loadCloudData, saveCloudData, subscribeToCloudChanges } from "./lib/cloudSync";
 import Auth from "./Auth";
+import ResetPassword from "./ResetPassword";
 
 import Dashboard from "./tabs/Dashboard";
 import AnalyticsTab from "./tabs/Analytics";
@@ -49,6 +50,7 @@ const TABS = [
    ============================================================ */
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = "still checking", null = "logged out"
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -56,11 +58,18 @@ export default function App() {
       return;
     }
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
       setSession(newSession);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  if (passwordRecovery) {
+    return <ResetPassword onDone={() => setPasswordRecovery(false)} />;
+  }
 
   if (supabaseConfigured && session === undefined) {
     return <FullScreenMessage text="Loading..." />;
