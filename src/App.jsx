@@ -397,7 +397,7 @@ function MainApp({ session }) {
             deleteDispatch={deleteDispatch}
           />
         )}
-        {tab === "dispatch" && <DispatchTab data={data} />}
+        {tab === "dispatch" && <DispatchTab data={data} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />}
         {tab === "collections" && (
           <CollectionsTab data={data} addCollection={addCollection} deleteCollection={deleteCollection} updateCdPolicy={updateCdPolicy} />
         )}
