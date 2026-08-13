@@ -420,6 +420,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
     lrDate: todayISO(),
     transporter: "",
     freight: "",
+    actualInvoiceValue: "",
   };
   const [form, setForm] = useState(emptyDispatchForm);
 
@@ -438,6 +439,8 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
   const previewSubtotal = previewUnitValue + previewFreight + previewGst;
   const previewInvoiceTotal = Math.round(previewSubtotal);
   const previewRoundOff = Math.round((previewInvoiceTotal - previewSubtotal) * 100) / 100;
+  const previewActual = form.actualInvoiceValue !== "" ? Math.round(Number(form.actualInvoiceValue)) : null;
+  const previewVariance = previewActual != null ? previewActual - previewInvoiceTotal : 0;
 
   function startEditDispatch(d) {
     setForm({
@@ -451,6 +454,7 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
       lrDate: d.lrDate || todayISO(),
       transporter: d.transporter || "",
       freight: d.freight || "",
+      actualInvoiceValue: d.actualInvoiceValue ?? "",
     });
     setEditingDispatchId(d.id);
     setShowForm(true);
@@ -580,7 +584,30 @@ function DispatchSection({ indent, addDispatch, updateDispatch, deleteDispatch }
               <div>Freight: {formatINR(previewFreight)}</div>
               <div>GST (5%): {formatINR(previewGst)}</div>
               <div>Round Off (auto): {formatINR(previewRoundOff)}</div>
-              <div style={{ fontWeight: 800, marginTop: 4 }}>Invoice Total: {formatINR(previewInvoiceTotal)}</div>
+              <div style={{ fontWeight: 800, marginTop: 4 }}>Calculated Total: {formatINR(previewInvoiceTotal)}</div>
+            </div>
+          )}
+
+          <label style={styles.label}>Actual Mill Invoice Amount (optional)</label>
+          <input
+            style={styles.input}
+            type="number"
+            placeholder="Leave blank to use the calculated total above"
+            value={form.actualInvoiceValue}
+            onChange={(e) => setForm({ ...form, actualInvoiceValue: e.target.value })}
+          />
+          {previewActual != null && Math.abs(previewVariance) > 0.5 && (
+            <div
+              style={{
+                fontSize: 12,
+                marginTop: -8,
+                marginBottom: 12,
+                color: previewVariance > 0 ? colors.success : colors.danger,
+                fontWeight: 700,
+              }}
+            >
+              Variance vs calculated: {previewVariance > 0 ? "+" : ""}
+              {formatINR(previewVariance)} — this actual amount will be used everywhere (Outstanding, Ledger, Reports) instead of the calculated total.
             </div>
           )}
 

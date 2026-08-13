@@ -10,6 +10,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [mismatchOnly, setMismatchOnly] = useState(false);
   const [editingKey, setEditingKey] = useState(null);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
@@ -17,11 +18,13 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
 
   const allInvoices = useMemo(() => computeInvoices(data.indents, data.mills), [data.indents, data.mills]);
   const availableFYs = collectFYs([[allInvoices, (i) => i.invoiceDate]]);
+  const mismatchCount = allInvoices.filter((i) => i.hasActual && Math.abs(i.variance) > 0.5).length;
 
   const rows = allInvoices
     .filter((inv) => !buyerFilter || inv.buyerId === buyerFilter)
     .filter((inv) => !millFilter || inv.millId === millFilter)
     .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
+    .filter((inv) => !mismatchOnly || (inv.hasActual && Math.abs(inv.variance) > 0.5))
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
   function exportPDF() {
@@ -32,11 +35,11 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
         <td>${r.indentNumber}</td><td>${buyerName(r.buyerId)}</td><td>${millName(r.millId)}</td><td>${r.invoiceNo || "—"}</td>
         <td>${r.qty}</td><td>${formatINR(r.rate)}</td><td>${formatINR(r.unitValue)}</td>
         <td>${formatINR(r.freight)}</td><td>${formatINR(r.gstAmount)}</td><td>${r.roundOff.toFixed(2)}</td>
-        <td><strong>${formatINR(r.value)}</strong></td>
+        <td><strong>${formatINR(r.value)}</strong></td><td>${r.hasActual ? formatINR(r.variance) : "—"}</td>
       </tr>`
       )
       .join("");
-    const html = `<h2>Dispatch Register</h2><table><thead><tr><th>Indent No</th><th>Buyer</th><th>Mill</th><th>Mill Inv</th><th>Qty</th><th>Rate</th><th>Base Val</th><th>Freight</th><th>GST (5%)</th><th>R/Off</th><th>Total Val</th></tr></thead><tbody>${tableRows}</tbody></table>`;
+    const html = `<h2>Dispatch Register</h2><table><thead><tr><th>Indent No</th><th>Buyer</th><th>Mill</th><th>Mill Inv</th><th>Qty</th><th>Rate</th><th>Base Val</th><th>Freight</th><th>GST (5%)</th><th>R/Off</th><th>Total Val</th><th>Variance</th></tr></thead><tbody>${tableRows}</tbody></table>`;
     printReport("Dispatch Register", html);
   }
 
@@ -83,10 +86,17 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
         Showing {rows.length} of {allInvoices.length} dispatch entries.
         {millFilter && ` Filtered to: ${millName(millFilter)}.`}
       </div>
+
+      {mismatchCount > 0 && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 12, color: colors.danger, fontWeight: 700 }}>
+          <input type="checkbox" checked={mismatchOnly} onChange={(e) => setMismatchOnly(e.target.checked)} />
+          Show only mismatches ({mismatchCount} dispatch{mismatchCount > 1 ? "es" : ""} where actual invoice ≠ calculated)
+        </label>
+      )}
 
       <div style={{ ...styles.card, overflowX: "auto" }}>
         <table style={styles.table}>
@@ -103,6 +113,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
               <th style={styles.th}>GST(5%)</th>
               <th style={styles.th}>R/Off</th>
               <th style={styles.th}>Inv Val</th>
+              <th style={styles.th}>Variance</th>
               <th style={styles.th}></th>
             </tr>
           </thead>
@@ -112,7 +123,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
                 <EditRow
                   key={r.key}
                   row={r}
-                  colSpan={12}
+                  colSpan={13}
                   onCancel={() => setEditingKey(null)}
                   onSave={(changes) => {
                     updateDispatch(r.indentId, r.dispatchId, changes);
@@ -120,7 +131,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
                   }}
                 />
               ) : (
-                <tr key={r.key}>
+                <tr key={r.key} style={r.hasActual && Math.abs(r.variance) > 0.5 ? { background: "#FEF2F2" } : undefined}>
                   <td style={styles.td}>{formatDate(r.invoiceDate)}</td>
                   <td style={styles.td}>{r.indentNumber}</td>
                   <td style={{ ...styles.td, whiteSpace: "nowrap" }}>{buyerName(r.buyerId)}</td>
@@ -133,7 +144,20 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
                   <td style={styles.td}>{formatINR(r.freight)}</td>
                   <td style={styles.td}>{formatINR(r.gstAmount)}</td>
                   <td style={{ ...styles.td, fontSize: 11, color: colors.textMuted }}>{r.roundOff.toFixed(2)}</td>
-                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(r.value)}</td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>
+                    {formatINR(r.value)}
+                    {r.hasActual && <div style={{ fontSize: 10, color: colors.textMuted, fontWeight: 400 }}>(actual)</div>}
+                  </td>
+                  <td style={styles.td}>
+                    {r.hasActual ? (
+                      <span style={{ color: Math.abs(r.variance) > 0.5 ? colors.danger : colors.success, fontWeight: 700 }}>
+                        {r.variance > 0 ? "+" : ""}
+                        {formatINR(r.variance)}
+                      </span>
+                    ) : (
+                      <span style={{ color: colors.textMuted }}>—</span>
+                    )}
+                  </td>
                   <td style={styles.td}>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button style={{ ...styles.btnGhost, padding: "4px 8px", fontSize: 11 }} onClick={() => setEditingKey(r.key)}>
@@ -149,7 +173,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
             )}
             {rows.length === 0 && (
               <tr>
-                <td style={styles.td} colSpan={12}>
+                <td style={styles.td} colSpan={13}>
                   No dispatch entries found.
                 </td>
               </tr>
@@ -172,6 +196,7 @@ function EditRow({ row, onSave, onCancel, colSpan }) {
     lrDate: row.lrDate || todayISO(),
     transporter: row.transporter || "",
     freight: row.freight || 0,
+    actualInvoiceValue: row.actualValue ?? "",
   });
 
   function save() {
@@ -198,6 +223,16 @@ function EditRow({ row, onSave, onCancel, colSpan }) {
               <label style={styles.label}>Freight (₹)</label>
               <input style={{ ...styles.input, marginBottom: 8 }} type="number" value={form.freight} onChange={(e) => setForm({ ...form, freight: e.target.value })} />
             </div>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={styles.label}>Actual Mill Invoice Amount (optional — overrides calculated total)</label>
+            <input
+              style={{ ...styles.input, marginBottom: 0 }}
+              type="number"
+              placeholder="Leave blank to use calculated total"
+              value={form.actualInvoiceValue}
+              onChange={(e) => setForm({ ...form, actualInvoiceValue: e.target.value })}
+            />
           </div>
           <div style={styles.row3}>
             <div>
