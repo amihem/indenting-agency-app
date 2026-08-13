@@ -2,21 +2,25 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate } from "../lib/storage";
-import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices, roundRupee } from "../lib/calc";
+import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices, roundRupee, computeInvoices } from "../lib/calc";
 import { shareOutstanding } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
+import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 export default function OutstandingTab({ data }) {
   const [view, setView] = useState("customer"); // "customer" | "mill"
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
+
+  const availableFYs = collectFYs([[computeInvoices(data.indents, data.mills), (i) => i.invoiceDate]]);
 
   const buyersToShow = buyerFilter ? data.buyers.filter((b) => b.id === buyerFilter) : data.buyers;
 
   const perBuyer = buyersToShow
     .map((buyer) => ({
       buyer,
-      invoices: buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections),
+      invoices: buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
     }))
     .filter((x) => x.invoices.length > 0);
 
@@ -83,7 +87,7 @@ export default function OutstandingTab({ data }) {
 
       {view === "customer" && (
         <>
-          <div style={styles.row2}>
+          <div style={styles.row3}>
             <div>
               <label style={styles.label}>Filter by Buyer</label>
               <select style={styles.input} value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
@@ -92,6 +96,10 @@ export default function OutstandingTab({ data }) {
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label style={styles.label}>Financial Year</label>
+              <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
             </div>
             <div style={{ display: "flex", alignItems: "end" }}>
               <button style={styles.btnPdf} onClick={exportCustomerPDF}>Export PDF</button>
@@ -152,7 +160,7 @@ export default function OutstandingTab({ data }) {
 
       {view === "mill" && (
         <>
-          <div style={styles.row2}>
+          <div style={styles.row3}>
             <div>
               <label style={styles.label}>Filter by Mill</label>
               <select style={styles.input} value={millFilter} onChange={(e) => setMillFilter(e.target.value)}>
@@ -161,6 +169,10 @@ export default function OutstandingTab({ data }) {
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label style={styles.label}>Financial Year</label>
+              <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
             </div>
             <div style={{ display: "flex", alignItems: "end" }}>
               <button style={styles.btnPdf} onClick={exportMillPDF}>Export PDF</button>
@@ -175,7 +187,10 @@ export default function OutstandingTab({ data }) {
           </div>
 
           {(millFilter ? data.mills.filter((m) => m.id === millFilter) : data.mills)
-            .map((mill) => ({ mill, invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections) }))
+            .map((mill) => ({
+              mill,
+              invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
+            }))
             .filter((x) => x.invoices.length > 0)
             .map(({ mill, invoices }) => {
               const millTotal = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));

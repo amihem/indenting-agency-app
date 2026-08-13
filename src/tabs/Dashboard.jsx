@@ -1,11 +1,31 @@
 // src/tabs/Dashboard.jsx
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
-import { getDashboardSummary, buyerOutstandingInvoices } from "../lib/calc";
+import { getDashboardSummary, buyerOutstandingInvoices, computeInvoices, invoiceWithStatus } from "../lib/calc";
+import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 export default function Dashboard({ data, setTab, goToReports }) {
-  const summary = getDashboardSummary(data);
+  const [fyFilter, setFyFilter] = useState("");
+  const fullSummary = getDashboardSummary(data);
+
+  const allInvoicesForFY = useMemo(() => computeInvoices(data.indents, data.mills), [data.indents, data.mills]);
+  const availableFYs = collectFYs([[allInvoicesForFY, (i) => i.invoiceDate]]);
+
+  const summary = useMemo(() => {
+    if (!fyFilter) return fullSummary;
+    const invoices = computeInvoices(data.indents, data.mills)
+      .map((inv) => invoiceWithStatus(inv, data.collections))
+      .filter((inv) => matchesFY(inv.invoiceDate, fyFilter));
+    return {
+      ...fullSummary,
+      totalSale: invoices.reduce((s, i) => s + i.value, 0),
+      totalPaid: invoices.reduce((s, i) => s + i.paidTotal, 0),
+      outstanding: invoices.reduce((s, i) => s + i.balance, 0),
+      totalCommissionRealized: invoices.reduce((s, i) => s + i.commissionRealized, 0),
+      totalCommissionAccrued: invoices.reduce((s, i) => s + i.commissionAccrued, 0),
+    };
+  }, [fullSummary, data, fyFilter]);
 
   // Calculate Top Outstanding
   const buyersWithOutstanding = data.buyers.map((buyer) => {
@@ -92,8 +112,11 @@ export default function Dashboard({ data, setTab, goToReports }) {
     <div>
       {/* Top Hero Card - Commission */}
       <div style={{ backgroundColor: "#1a365d", borderRadius: 12, padding: 24, color: "#fff", marginBottom: 16, boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "#cbd5e0", marginBottom: 8, textTransform: "uppercase" }}>
-          Commission Earned (On Payments)
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "#cbd5e0", marginBottom: 8, textTransform: "uppercase" }}>
+            Commission Earned (On Payments) {fyFilter && `— ${fyFilter}`}
+          </div>
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ width: "auto", marginBottom: 0, background: "#fff" }} />
         </div>
         <div style={{ fontSize: 32, fontWeight: 800, color: "#f6e05e" }}>
           {formatINR(summary.totalCommissionRealized)}

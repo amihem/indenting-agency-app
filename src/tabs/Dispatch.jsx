@@ -4,21 +4,25 @@ import { styles, colors } from "../styles";
 import { formatDate, formatINR, todayISO } from "../lib/storage";
 import { computeInvoices } from "../lib/calc";
 import { printReport } from "../lib/print";
+import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
   const [editingKey, setEditingKey] = useState(null);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
   const allInvoices = useMemo(() => computeInvoices(data.indents, data.mills), [data.indents, data.mills]);
+  const availableFYs = collectFYs([[allInvoices, (i) => i.invoiceDate]]);
 
   const rows = allInvoices
     .filter((inv) => !buyerFilter || inv.buyerId === buyerFilter)
     .filter((inv) => !millFilter || inv.millId === millFilter)
-    .sort((a, b) => new Date(b.dispatchDate) - new Date(a.dispatchDate));
+    .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
+    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
   function exportPDF() {
     const tableRows = rows
@@ -50,7 +54,7 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
         </button>
       </div>
 
-      <div style={styles.row2}>
+      <div style={styles.row3}>
         <div>
           <label style={styles.label}>Customer (Buyer)</label>
           <select style={styles.input} value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
@@ -72,6 +76,10 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label style={styles.label}>Financial Year</label>
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
         </div>
       </div>
 

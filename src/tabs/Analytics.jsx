@@ -1,15 +1,22 @@
 // src/tabs/Analytics.jsx
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
 import { computeInvoices, invoiceWithStatus, getDashboardSummary } from "../lib/calc";
+import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 export default function AnalyticsTab({ data }) {
+  const [fyFilter, setFyFilter] = useState("");
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "Unknown";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "Unknown";
 
+  const allInvoicesForFY = useMemo(() => computeInvoices(data.indents, data.mills), [data.indents, data.mills]);
+  const availableFYs = collectFYs([[allInvoicesForFY, (i) => i.invoiceDate]]);
+
   const analyticsData = useMemo(() => {
-    const invoices = computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
+    const invoices = computeInvoices(data.indents, data.mills)
+      .map((inv) => invoiceWithStatus(inv, data.collections))
+      .filter((inv) => matchesFY(inv.invoiceDate, fyFilter));
 
     const monthlyData = {};
     const buyerData = {};
@@ -40,14 +47,30 @@ export default function AnalyticsTab({ data }) {
     const sortTop5 = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     return {
+      invoices,
       monthly: Object.entries(monthlyData).sort((a, b) => (a[0] > b[0] ? 1 : -1)),
       topBuyers: sortTop5(buyerData),
       topMills: sortTop5(millData),
       topProducts: sortTop5(productData),
     };
-  }, [data]);
+  }, [data, fyFilter]);
 
-  const summary = useMemo(() => getDashboardSummary(data), [data]);
+  // KPI cards recompute from the FY-filtered invoices so the whole page stays
+  // consistent with the selected year. Overdue / Pending Dispatch stay as
+  // "right now" figures from the full dataset — a past FY's overdue balance
+  // doesn't disappear just because you're viewing an older year.
+  const fullSummary = useMemo(() => getDashboardSummary(data), [data]);
+  const summary = useMemo(() => {
+    if (!fyFilter) return fullSummary;
+    const inv = analyticsData.invoices;
+    return {
+      ...fullSummary,
+      totalSale: inv.reduce((s, i) => s + i.value, 0),
+      totalCommissionRealized: inv.reduce((s, i) => s + i.commissionRealized, 0),
+      totalCommissionAccrued: inv.reduce((s, i) => s + i.commissionAccrued, 0),
+      outstanding: inv.reduce((s, i) => s + i.balance, 0),
+    };
+  }, [fullSummary, analyticsData, fyFilter]);
 
   const maxMonthlySale = Math.max(...analyticsData.monthly.map((m) => m[1].sales), 1);
   const maxMonthlyCommission = Math.max(...analyticsData.monthly.map((m) => m[1].commission), 1);
@@ -59,6 +82,7 @@ export default function AnalyticsTab({ data }) {
     <div>
       <div style={styles.sectionHeader}>
         <div style={styles.h2}>Business Analytics</div>
+        <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ width: "auto" }} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>

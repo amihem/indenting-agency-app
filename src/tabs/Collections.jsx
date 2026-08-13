@@ -5,6 +5,7 @@ import { formatINR, formatDate, todayISO } from "../lib/storage";
 import { pendingInvoicesForCollectionEntry, calcCdPct, roundRupee } from "../lib/calc";
 import { shareCollection } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
+import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 export default function CollectionsTab({ data, addCollection, deleteCollection, updateCdPolicy }) {
   const [showForm, setShowForm] = useState(false);
@@ -12,14 +13,18 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
   const [filterBuyer, setFilterBuyer] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const getBuyer = (id) => data.buyers.find((b) => b.id === id);
+
+  const availableFYs = collectFYs([[data.collections, (c) => c.date]]);
 
   let visible = data.collections;
   if (filterBuyer) visible = visible.filter((c) => c.buyerId === filterBuyer);
   if (filterFrom) visible = visible.filter((c) => c.date >= filterFrom);
   if (filterTo) visible = visible.filter((c) => c.date <= filterTo);
+  if (fyFilter) visible = visible.filter((c) => matchesFY(c.date, fyFilter));
   const sorted = [...visible].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // Grand total now explicitly tracks ONLY actual cash received
@@ -69,7 +74,7 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
         <CollectionForm data={data} onSave={(c) => { addCollection(c); setShowForm(false); }} />
       )}
 
-      <div style={styles.row3}>
+      <div style={{ ...styles.row3, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
         <div>
           <label style={styles.label}>Buyer</label>
           <select style={styles.input} value={filterBuyer} onChange={(e) => setFilterBuyer(e.target.value)}>
@@ -88,6 +93,10 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
         <div>
           <label style={styles.label}>To Date</label>
           <input style={styles.input} type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+        </div>
+        <div>
+          <label style={styles.label}>Financial Year</label>
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
         </div>
       </div>
 

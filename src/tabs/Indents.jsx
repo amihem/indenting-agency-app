@@ -5,6 +5,7 @@ import { formatINR, formatDate, todayISO, ROLL_LENGTH_METERS } from "../lib/stor
 import { indentOrderValue, totalDispatchedQty, pendingQty } from "../lib/calc";
 import { shareIndent } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
+import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
 const emptyForm = {
   buyerId: "",
@@ -36,6 +37,7 @@ export default function IndentsTab({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
@@ -139,7 +141,16 @@ export default function IndentsTab({
     printReport(`Indent ${indent.indentNumber}`, html);
   }
 
-  const visibleIndents = filterStatus ? data.indents.filter((i) => i.status === filterStatus) : data.indents;
+  const availableFYs = collectFYs([[data.indents, (i) => i.date]]);
+
+  const visibleIndents = data.indents
+    .filter((i) => !filterStatus || i.status === filterStatus)
+    .filter((i) => matchesFY(i.date, fyFilter))
+    .sort((a, b) => {
+      const dateDiff = new Date(a.date) - new Date(b.date);
+      if (dateDiff !== 0) return dateDiff;
+      return (a.indentNumber || "").localeCompare(b.indentNumber || "", undefined, { numeric: true });
+    });
 
   return (
     <div>
@@ -279,7 +290,7 @@ export default function IndentsTab({
         </div>
       )}
 
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <select style={{ ...styles.input, marginBottom: 0, width: "auto" }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
@@ -289,6 +300,7 @@ export default function IndentsTab({
           <option value="closed">Closed</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0, width: "auto" }} />
       </div>
 
       <div style={{ ...styles.card, overflowX: "auto" }}>

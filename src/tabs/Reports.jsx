@@ -4,6 +4,7 @@ import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
 import { computeInvoices, invoiceWithStatus, customerWiseAgeing, AGEING_BUCKETS } from "../lib/calc";
 import { printReport } from "../lib/print";
+import { collectFYs, FYSelect, getFYDateRange } from "../lib/fy.jsx";
 
 function groupSum(list, keyFn, valueFn) {
   const map = {};
@@ -74,9 +75,25 @@ export default function ReportsTab({ data, initialSection }) {
   const [section, setSection] = useState(initialSection || "sales");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [fyQuickFilter, setFyQuickFilter] = useState("");
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
+
+  const allInvoicesForFY = computeInvoices(data.indents, data.mills);
+  const availableFYs = collectFYs([[allInvoicesForFY, (i) => i.invoiceDate]]);
+
+  function handleFYQuickFilter(fy) {
+    setFyQuickFilter(fy);
+    const range = getFYDateRange(fy);
+    if (range) {
+      setFromDate(range.from);
+      setToDate(range.to);
+    } else {
+      setFromDate("");
+      setToDate("");
+    }
+  }
 
   let invoices = computeInvoices(data.indents, data.mills).map((inv) => invoiceWithStatus(inv, data.collections));
   if (fromDate) invoices = invoices.filter((i) => i.invoiceDate >= fromDate);
@@ -135,14 +152,19 @@ export default function ReportsTab({ data, initialSection }) {
     <div>
       <div style={styles.h2}>Reports</div>
 
+      <div style={{ marginBottom: 8 }}>
+        <label style={styles.label}>Quick Filter — Financial Year</label>
+        <FYSelect value={fyQuickFilter} onChange={handleFYQuickFilter} fys={availableFYs} style={{ width: "auto" }} />
+      </div>
+
       <div style={styles.row2}>
         <div>
           <label style={styles.label}>From Date</label>
-          <input style={styles.input} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <input style={styles.input} type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setFyQuickFilter(""); }} />
         </div>
         <div>
           <label style={styles.label}>To Date</label>
-          <input style={styles.input} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          <input style={styles.input} type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setFyQuickFilter(""); }} />
         </div>
       </div>
 

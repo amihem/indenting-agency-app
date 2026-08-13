@@ -4,15 +4,17 @@ import { styles, colors } from "../styles";
 import { formatINR, formatDate, formatBalance } from "../lib/storage";
 import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
+import { collectFYs, getFYDateRange, FYSelect } from "../lib/fy.jsx";
 
 export default function LedgerTab({ data }) {
   const [entityType, setEntityType] = useState("buyer");
   const [entityId, setEntityId] = useState("");
+  const [fyFilter, setFyFilter] = useState("");
 
   const entities = entityType === "buyer" ? data.buyers : data.mills;
   const entityName = entities.find((e) => e.id === entityId)?.name || "";
 
-  const entries = entityId
+  const allEntries = entityId
     ? ledgerEntries({
         entityType,
         entityId,
@@ -24,9 +26,25 @@ export default function LedgerTab({ data }) {
       })
     : [];
 
-  const totalBalance = entries.length ? entries[entries.length - 1].runningBalance : 0;
+  const availableFYs = collectFYs([[allEntries, (e) => e.date]]);
+
+  // Filtering to one FY still needs a correct running balance, so we carry
+  // forward whatever the balance was just before that FY started.
+  let entries = allEntries;
+  let openingBalance = 0;
+  if (fyFilter) {
+    const range = getFYDateRange(fyFilter);
+    const before = allEntries.filter((e) => e.date < range.from);
+    openingBalance = before.length ? before[before.length - 1].runningBalance : 0;
+    entries = allEntries.filter((e) => e.date >= range.from && e.date <= range.to);
+  }
+
+  const totalBalance = entries.length ? entries[entries.length - 1].runningBalance : openingBalance;
 
   function exportPDF() {
+    const openingRow = fyFilter
+      ? `<tr><td></td><td><strong>Opening Balance</strong></td><td></td><td></td><td><strong>${formatBalance(openingBalance)}</strong></td></tr>`
+      : "";
     const rows = entries
       .map(
         (e) => `
@@ -40,13 +58,13 @@ export default function LedgerTab({ data }) {
       )
       .join("");
     const html = `
-      <h2>Account Ledger — ${entityName}</h2>
+      <h2>Account Ledger — ${entityName}${fyFilter ? ` (${fyFilter})` : ""}</h2>
       <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
       <table>
         <thead>
           <tr><th>Doc/Transaction Date</th><th>Particular</th><th>Debit Amt</th><th>Credit Amt</th><th>Balance</th></tr>
         </thead>
-        <tbody>${rows}</tbody>
+        <tbody>${openingRow}${rows}</tbody>
       </table>
       <p><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
     `;
@@ -64,7 +82,7 @@ export default function LedgerTab({ data }) {
         )}
       </div>
 
-      <div style={styles.row2}>
+      <div style={{ ...styles.row3 }}>
         <div>
           <label style={styles.label}>Ledger Type</label>
           <select
@@ -90,6 +108,10 @@ export default function LedgerTab({ data }) {
             ))}
           </select>
         </div>
+        <div>
+          <label style={styles.label}>Financial Year</label>
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
+        </div>
       </div>
 
       {!entityId && (
@@ -111,6 +133,15 @@ export default function LedgerTab({ data }) {
               </tr>
             </thead>
             <tbody>
+              {fyFilter && (
+                <tr>
+                  <td style={styles.td}></td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>Opening Balance</td>
+                  <td style={styles.td}></td>
+                  <td style={styles.td}></td>
+                  <td style={{ ...styles.td, fontWeight: 700 }}>{formatBalance(openingBalance)}</td>
+                </tr>
+              )}
               {entries.map((e, i) => (
                 <tr key={i}>
                   <td style={styles.td}>{formatDate(e.date)}</td>
@@ -120,7 +151,7 @@ export default function LedgerTab({ data }) {
                   <td style={{ ...styles.td, fontWeight: 700 }}>{formatBalance(e.runningBalance)}</td>
                 </tr>
               ))}
-              {entries.length === 0 && (
+              {entries.length === 0 && !fyFilter && (
                 <tr>
                   <td style={styles.td} colSpan={5}>
                     No transactions yet.
@@ -129,7 +160,7 @@ export default function LedgerTab({ data }) {
               )}
             </tbody>
           </table>
-          {entries.length > 0 && (
+          {(entries.length > 0 || fyFilter) && (
             <div style={{ textAlign: "right", marginTop: 10, fontWeight: 800 }}>
               Total Balance: {formatBalance(totalBalance)}
             </div>
