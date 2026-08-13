@@ -41,9 +41,18 @@ export function computeInvoices(indents, mills) {
       const gstBase = unitValue + freight;
       const gstAmount = Math.round(gstBase * 0.05 * 100) / 100; // 5% GST on (unit value + freight)
       const subtotal = unitValue + freight + gstAmount;
-      const invoiceValue = Math.round(subtotal); // final invoice amount, whole rupees
-      const roundOff = Math.round((invoiceValue - subtotal) * 100) / 100;
+      const calculatedValue = Math.round(subtotal); // what the app's formula produces
+      const roundOff = Math.round((calculatedValue - subtotal) * 100) / 100;
       const commission = Math.round(unitValue * (commissionPct / 100)); // commission on goods value only, not GST/freight
+
+      // If the real mill invoice differs from our formula (different GST
+      // rate, extra charges, their own rounding, etc.), enter the actual
+      // amount here — everything downstream (Outstanding, Ledger, Reports)
+      // then uses that real figure, while `variance` shows the gap for review.
+      const hasActual = d.actualInvoiceValue !== undefined && d.actualInvoiceValue !== null && d.actualInvoiceValue !== "";
+      const actualValue = hasActual ? Math.round(Number(d.actualInvoiceValue)) : null;
+      const invoiceValue = hasActual ? actualValue : calculatedValue;
+      const variance = hasActual ? actualValue - calculatedValue : 0;
 
       invoices.push({
         key: d.id,
@@ -67,6 +76,10 @@ export function computeInvoices(indents, mills) {
         freight,
         gstAmount,
         roundOff,
+        calculatedValue,
+        actualValue,
+        hasActual,
+        variance,
         value: invoiceValue,
         commissionPct,
         commission,
