@@ -1,17 +1,18 @@
 // src/tabs/Dispatch.jsx
 import React, { useState, useMemo } from "react";
 import { styles, colors } from "../styles";
-import { formatDate, formatINR, todayISO } from "../lib/storage";
-import { computeInvoices } from "../lib/calc";
+import { formatDate, formatINR, todayISO, ROLL_LENGTH_METERS } from "../lib/storage";
+import { computeInvoices, pendingQty } from "../lib/calc";
 import { printReport } from "../lib/print";
 import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 
-export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
+export default function DispatchTab({ data, addDispatch, updateDispatch, deleteDispatch }) {
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
   const [fyFilter, setFyFilter] = useState("");
   const [mismatchOnly, setMismatchOnly] = useState(false);
   const [editingKey, setEditingKey] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
@@ -52,10 +53,19 @@ export default function DispatchTab({ data, updateDispatch, deleteDispatch }) {
     <div>
       <div style={styles.sectionHeader}>
         <div style={styles.h2}>Dispatch Tracking</div>
-        <button style={styles.btnPdf} onClick={exportPDF}>
-          Export PDF
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={styles.btn} onClick={() => setShowAddForm((s) => !s)}>
+            {showAddForm ? "Cancel" : "+ Add Dispatch"}
+          </button>
+          <button style={styles.btnPdf} onClick={exportPDF}>
+            Export PDF
+          </button>
+        </div>
       </div>
+
+      {showAddForm && (
+        <QuickAddDispatch data={data} addDispatch={addDispatch} onDone={() => setShowAddForm(false)} />
+      )}
 
       <div style={styles.row3}>
         <div>
@@ -269,5 +279,215 @@ function EditRow({ row, onSave, onCancel, colSpan }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+/* ---------------- Quick Add Dispatch — Buyer first, then only their pending Indents ---------------- */
+function QuickAddDispatch({ data, addDispatch, onDone }) {
+  const [buyerId, setBuyerId] = useState("");
+  const [indentId, setIndentId] = useState("");
+  const [orderIn, setOrderIn] = useState("meters");
+  const [form, setForm] = useState({
+    date: todayISO(),
+    rolls: "",
+    qty: "",
+    invoiceNumber: "",
+    invoiceDate: todayISO(),
+    lrNumber: "",
+    lrDate: todayISO(),
+    transporter: "",
+    freight: "",
+    actualInvoiceValue: "",
+  });
+
+  const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
+  const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
+
+  // Only pending indents (not fulfilled/cancelled/closed, and still has qty left)
+  // for the selected buyer — this is the whole point: no more hunting through
+  // the full Indent list.
+  const pendingIndentsForBuyer = data.indents.filter(
+    (i) =>
+      i.buyerId === buyerId &&
+      !["fulfilled", "cancelled", "closed"].includes(i.status) &&
+      pendingQty(i) > 0
+  );
+
+  const selectedIndent = data.indents.find((i) => i.id === indentId);
+  const remaining = selectedIndent ? pendingQty(selectedIndent) : 0;
+
+  const previewQty = Number(form.qty) || 0;
+  const previewUnitValue = Math.round(previewQty * (Number(selectedIndent?.rate) || 0));
+  const previewFreight = Number(form.freight) || 0;
+  const previewGstBase = previewUnitValue + previewFreight;
+  const previewGst = Math.round(previewGstBase * 0.05 * 100) / 100;
+  const previewSubtotal = previewUnitValue + previewFreight + previewGst;
+  const previewInvoiceTotal = Math.round(previewSubtotal);
+  const previewRoundOff = Math.round((previewInvoiceTotal - previewSubtotal) * 100) / 100;
+  const previewActual = form.actualInvoiceValue !== "" ? Math.round(Number(form.actualInvoiceValue)) : null;
+  const previewVariance = previewActual != null ? previewActual - previewInvoiceTotal : 0;
+
+  const canSubmit = indentId && form.qty && Number(form.qty) > 0;
+
+  function submit() {
+    if (!canSubmit) return;
+    addDispatch(indentId, { ...form, orderIn, qty: Number(form.qty), freight: Number(form.freight) || 0 });
+    onDone();
+  }
+
+  return (
+    <div style={{ ...styles.card, borderColor: colors.indigo }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Add Dispatch</div>
+
+      <label style={styles.label}>Step 1 — Select Buyer *</label>
+      <select
+        style={styles.input}
+        value={buyerId}
+        onChange={(e) => {
+          setBuyerId(e.target.value);
+          setIndentId("");
+        }}
+      >
+        <option value="">Select buyer</option>
+        {data.buyers.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </select>
+
+      {buyerId && (
+        <>
+          <label style={styles.label}>Step 2 — Select Pending Indent *</label>
+          {pendingIndentsForBuyer.length === 0 ? (
+            <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>
+              No pending indents for {buyerName(buyerId)} — everything is already dispatched, closed, or cancelled.
+            </div>
+          ) : (
+            <select style={styles.input} value={indentId} onChange={(e) => setIndentId(e.target.value)}>
+              <option value="">Select indent ({pendingIndentsForBuyer.length} pending)</option>
+              {pendingIndentsForBuyer.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.indentNumber} · {millName(i.millId)} · {i.productName} · {pendingQty(i)} {i.unit} pending
+                </option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
+
+      {selectedIndent && (
+        <>
+          <div style={{ ...styles.card, background: colors.bg, fontSize: 13, marginBottom: 12 }}>
+            <strong>{selectedIndent.indentNumber}</strong> — {selectedIndent.productName} · Rate: {formatINR(selectedIndent.rate)} ·{" "}
+            <span style={{ color: colors.mustard, fontWeight: 700 }}>
+              {remaining} {selectedIndent.unit} remaining
+            </span>
+          </div>
+
+          <label style={styles.label}>Dispatch In</label>
+          <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 13 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="radio" checked={orderIn === "meters"} onChange={() => setOrderIn("meters")} />
+              Direct Quantity
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="radio" checked={orderIn === "rolls"} onChange={() => setOrderIn("rolls")} />
+              No. of Rolls ({ROLL_LENGTH_METERS}m/roll)
+            </label>
+          </div>
+
+          <div style={styles.row3}>
+            <div>
+              <label style={styles.label}>Dispatch Date</label>
+              <input style={styles.input} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </div>
+            {orderIn === "rolls" ? (
+              <div>
+                <label style={styles.label}>No. of Rolls *</label>
+                <input
+                  style={styles.input}
+                  type="number"
+                  value={form.rolls}
+                  onChange={(e) => {
+                    const rolls = e.target.value;
+                    setForm({ ...form, rolls, qty: rolls ? Number(rolls) * ROLL_LENGTH_METERS : "" });
+                  }}
+                />
+              </div>
+            ) : (
+              <div>
+                <label style={styles.label}>Quantity Dispatched *</label>
+                <input
+                  style={styles.input}
+                  type="number"
+                  placeholder={`out of ${remaining} remaining`}
+                  value={form.qty}
+                  onChange={(e) => setForm({ ...form, qty: e.target.value })}
+                />
+              </div>
+            )}
+            <div>
+              <label style={styles.label}>Freight (₹)</label>
+              <input style={styles.input} type="number" value={form.freight} onChange={(e) => setForm({ ...form, freight: e.target.value })} />
+            </div>
+          </div>
+
+          {previewQty > 0 && (
+            <div style={{ ...styles.card, background: colors.bg, marginBottom: 12, fontSize: 12 }}>
+              <div>Unit Value: {formatINR(previewUnitValue)}</div>
+              <div>Freight: {formatINR(previewFreight)}</div>
+              <div>GST (5%): {formatINR(previewGst)}</div>
+              <div>Round Off (auto): {formatINR(previewRoundOff)}</div>
+              <div style={{ fontWeight: 800, marginTop: 4 }}>Calculated Total: {formatINR(previewInvoiceTotal)}</div>
+            </div>
+          )}
+
+          <label style={styles.label}>Actual Mill Invoice Amount (optional)</label>
+          <input
+            style={styles.input}
+            type="number"
+            placeholder="Leave blank to use the calculated total above"
+            value={form.actualInvoiceValue}
+            onChange={(e) => setForm({ ...form, actualInvoiceValue: e.target.value })}
+          />
+          {previewActual != null && Math.abs(previewVariance) > 0.5 && (
+            <div style={{ fontSize: 12, marginTop: -8, marginBottom: 12, color: previewVariance > 0 ? colors.success : colors.danger, fontWeight: 700 }}>
+              Variance vs calculated: {previewVariance > 0 ? "+" : ""}
+              {formatINR(previewVariance)}
+            </div>
+          )}
+
+          <div style={styles.row3}>
+            <div>
+              <label style={styles.label}>Mill Invoice No</label>
+              <input style={styles.input} value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} />
+            </div>
+            <div>
+              <label style={styles.label}>Invoice Date</label>
+              <input style={styles.input} type="date" value={form.invoiceDate} onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })} />
+            </div>
+            <div>
+              <label style={styles.label}>Transporter</label>
+              <input style={styles.input} value={form.transporter} onChange={(e) => setForm({ ...form, transporter: e.target.value })} />
+            </div>
+          </div>
+          <div style={styles.row2}>
+            <div>
+              <label style={styles.label}>LR Number</label>
+              <input style={styles.input} value={form.lrNumber} onChange={(e) => setForm({ ...form, lrNumber: e.target.value })} />
+            </div>
+            <div>
+              <label style={styles.label}>LR Date</label>
+              <input style={styles.input} type="date" value={form.lrDate} onChange={(e) => setForm({ ...form, lrDate: e.target.value })} />
+            </div>
+          </div>
+
+          <button style={styles.btn} disabled={!canSubmit} onClick={submit}>
+            Save Dispatch
+          </button>
+        </>
+      )}
+    </div>
   );
 }
