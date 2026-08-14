@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { styles } from "./styles";
+import { styles, colors } from "./styles";
 import { loadData, saveData, uid, todayISO } from "./lib/storage";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { loadCloudData, saveCloudData, subscribeToCloudChanges } from "./lib/cloudSync";
@@ -40,6 +40,19 @@ const TABS = [
   ["ledger", "Ledger"],
   ["masters", "Masters"],
 ];
+
+const menuItemStyle = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "12px 16px",
+  background: "none",
+  border: "none",
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  color: "inherit",
+};
 
 /* ============================================================
    Root component: decides between "not logged in" (Auth screen)
@@ -102,6 +115,7 @@ function MainApp({ session }) {
   const [tab, setTab] = useState("dashboard");
   const [reportSection, setReportSection] = useState("sales");
   const [showDataTools, setShowDataTools] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [syncStatus, setSyncStatus] = useState(supabaseConfigured ? "loading" : "local-only"); // loading | synced | saving | offline | local-only | error
 
   const lastKnownUpdatedAt = useRef(null);
@@ -328,42 +342,108 @@ function MainApp({ session }) {
   const addCreditNote = (note) => setData((d) => ({ ...d, creditNotes: [{ id: uid(), ...note }, ...d.creditNotes] }));
   const deleteCreditNote = (id) => setData((d) => ({ ...d, creditNotes: d.creditNotes.filter((n) => n.id !== id) }));
 
-  const syncLabel = {
-    loading: "⏳ Loading...",
-    saving: "🔄 Saving...",
-    synced: "✅ Synced",
-    offline: "⚠️ Offline (saved on this device)",
-    "local-only": "💾 Local only",
-    error: "⚠️ Sync error",
+  const syncDot = {
+    loading: { color: "#9CA3AF", label: "Loading..." },
+    saving: { color: "#F59E0B", label: "Saving..." },
+    synced: { color: "#10B981", label: "Synced" },
+    offline: { color: "#EF4444", label: "Offline — saved on this device" },
+    "local-only": { color: "#9CA3AF", label: "Local only (no cloud sync configured)" },
+    error: { color: "#EF4444", label: "Sync error" },
   }[syncStatus];
+
+  const userInitial = (session?.user?.email || "?").charAt(0).toUpperCase();
 
   return (
     <div style={styles.app}>
-      <div style={styles.header}>
-        <div style={styles.brand}>📦 Indenting Agency Manager</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 11, opacity: 0.85 }}>{syncLabel}</div>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{data.indents.length} indents</div>
-          {supabaseConfigured && session && (
-            <div style={{ fontSize: 11, opacity: 0.7 }}>{session.user.email}</div>
-          )}
-          <button
-            title="Backup / Restore / Import"
-            onClick={() => setShowDataTools(true)}
-            style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 34, height: 34, color: "#fff", fontSize: 16, cursor: "pointer" }}
-          >
-            💾
-          </button>
-          {supabaseConfigured && (
-            <button
-              title="Sign Out"
-              onClick={handleSignOut}
-              style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 34, height: 34, color: "#fff", fontSize: 16, cursor: "pointer" }}
-            >
-              🚪
-            </button>
-          )}
+      <div style={{ ...styles.header, position: "relative" }}>
+        <div style={styles.brand} title="Indenting Agency Manager">
+          <span style={{ fontSize: 20 }}>📦</span>
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Indenting Agency</span>
         </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            title={syncDot.label}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.9 }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: syncDot.color, display: "inline-block" }} />
+            <span style={{ display: window.innerWidth < 480 ? "none" : "inline" }}>{syncDot.label}</span>
+          </div>
+
+          <button
+            onClick={() => setShowUserMenu((s) => !s)}
+            title={session?.user?.email || "Menu"}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.18)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {supabaseConfigured && session ? userInitial : "☰"}
+          </button>
+        </div>
+
+        {showUserMenu && (
+          <>
+            <div
+              onClick={() => setShowUserMenu(false)}
+              style={{ position: "fixed", inset: 0, zIndex: 1998 }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                right: 20,
+                background: "#fff",
+                borderRadius: 10,
+                boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                minWidth: 240,
+                overflow: "hidden",
+                zIndex: 1999,
+                color: colors.text,
+              }}
+            >
+              {supabaseConfigured && session && (
+                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${colors.border}`, fontSize: 13, color: colors.textMuted }}>
+                  Signed in as
+                  <div style={{ fontWeight: 700, color: colors.text, fontSize: 14, marginTop: 2 }}>{session.user.email}</div>
+                </div>
+              )}
+              <div style={{ padding: "8px 8px", borderBottom: `1px solid ${colors.border}`, fontSize: 13, color: colors.textMuted }}>
+                {data.indents.length} indents on file
+              </div>
+              <button
+                onClick={() => {
+                  setShowDataTools(true);
+                  setShowUserMenu(false);
+                }}
+                style={menuItemStyle}
+              >
+                💾 Backup / Restore / Import
+              </button>
+              {supabaseConfigured && (
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    handleSignOut();
+                  }}
+                  style={{ ...menuItemStyle, color: colors.danger }}
+                >
+                  🚪 Sign Out
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div style={styles.tabBar}>
@@ -397,7 +477,7 @@ function MainApp({ session }) {
             deleteDispatch={deleteDispatch}
           />
         )}
-        {tab === "dispatch" && <DispatchTab data={data} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />}
+        {tab === "dispatch" && <DispatchTab data={data} addDispatch={addDispatch} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />}
         {tab === "collections" && (
           <CollectionsTab data={data} addCollection={addCollection} deleteCollection={deleteCollection} updateCdPolicy={updateCdPolicy} />
         )}
