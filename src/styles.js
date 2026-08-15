@@ -2,6 +2,7 @@
 
 export const colors = {
   primary: "#1E3A8A",   
+  primaryDark: "#152a63",
   secondary: "#3B82F6", 
   success: "#10B981",   
   danger: "#EF4444",    
@@ -15,8 +16,11 @@ export const colors = {
 
 export const styles = {
   app: { 
-    // Ye SAP ka official font stack hai
-    fontFamily: "'72', '72full', Arial,   Helvetica, sans-serif", 
+    // "72" is SAP's proprietary font (licensed only with SAP products, can't
+    // be embedded on the web) — Inter is the practical professional
+    // equivalent used by Linear/Vercel/GitHub, with the same clean
+    // enterprise character. Falls back to system fonts if it fails to load.
+    fontFamily: "'Inter', '72', '72full', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif", 
     backgroundColor: colors.bg, 
     minHeight: "100vh", 
     color: colors.text, 
@@ -230,7 +234,56 @@ export const styles = {
     fontSize: 11, 
     fontWeight: 700, 
     display: "inline-block" 
-  })
+  }),
+  // Searchable dropdown (combobox)
+  searchSelectWrap: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  searchSelectInput: {
+    width: "100%",
+    padding: "10px 12px",
+    border: `1px solid ${colors.border}`,
+    borderRadius: 8,
+    fontSize: 14,
+    boxSizing: "border-box",
+    backgroundColor: "#F9FAFB",
+    outline: "none",
+    cursor: "pointer",
+  },
+  searchSelectPanel: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    right: 0,
+    background: "#fff",
+    border: `1px solid ${colors.border}`,
+    borderRadius: 10,
+    boxShadow: "0 12px 28px rgba(0,0,0,0.14)",
+    zIndex: 500,
+    maxHeight: 280,
+    overflowY: "auto",
+  },
+  searchSelectOption: (active) => ({
+    padding: "10px 14px",
+    fontSize: 14,
+    cursor: "pointer",
+    backgroundColor: active ? "#EFF6FF" : "transparent",
+    color: colors.text,
+    borderBottom: `1px solid ${colors.bg}`,
+  }),
+  // Small pill/chip buttons for chart granularity toggles etc.
+  chip: (active) => ({
+    padding: "6px 14px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 700,
+    border: `1px solid ${active ? colors.primary : colors.border}`,
+    backgroundColor: active ? colors.primary : "#fff",
+    color: active ? "#fff" : colors.textMuted,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  }),
 };
 
 export const statusColors = {
