@@ -6,6 +6,7 @@ import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoic
 import { shareOutstanding } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function OutstandingTab({ data }) {
   const [view, setView] = useState("customer"); // "customer" | "mill"
@@ -30,7 +31,7 @@ export default function OutstandingTab({ data }) {
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
   function exportCustomerPDF() {
-    let html = `<h2>Customer Outstanding Report</h2><p>As on ${new Date().toLocaleDateString("en-IN")}</p>`;
+    let html = ``;
     perBuyer.forEach(({ buyer, invoices }) => {
       const total = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));
       html += `
@@ -47,11 +48,11 @@ export default function OutstandingTab({ data }) {
               .join("")}
           </tbody>
         </table>
-        <p><strong>Party Total: ${formatINR(total)}</strong></p>
+        <p style="text-align:right"><strong>Party Total: ${formatINR(total)}</strong></p>
       `;
     });
-    html += `<h3>Grand Total Outstanding: ${formatINR(grandTotal)}</h3>`;
-    printReport("Customer Outstanding Report", html);
+    html += `<h3 style="margin-top:24px">Grand Total Outstanding: ${formatINR(grandTotal)}</h3>`;
+    printReport("Customer Outstanding Report", html, `As on ${new Date().toLocaleDateString("en-IN")}${fyFilter ? ` · ${fyFilter}` : ""}`);
   }
 
   function exportMillPDF() {
@@ -60,12 +61,10 @@ export default function OutstandingTab({ data }) {
       .join("");
     const total = roundRupee(Object.values(millPending).reduce((s, v) => s + v, 0));
     const html = `
-      <h2>Mill-wise Pending Amount Report</h2>
-      <p>As on ${new Date().toLocaleDateString("en-IN")}</p>
       <table><thead><tr><th>Mill</th><th>Pending Amount</th></tr></thead><tbody>${rows}</tbody></table>
-      <p><strong>Total Pending: ${formatINR(total)}</strong></p>
+      <p style="text-align:right; margin-top:14px"><strong>Total Pending: ${formatINR(total)}</strong></p>
     `;
-    printReport("Mill-wise Pending Report", html);
+    printReport("Mill-wise Pending Report", html, `As on ${new Date().toLocaleDateString("en-IN")}`);
   }
 
   return (
@@ -90,12 +89,12 @@ export default function OutstandingTab({ data }) {
           <div style={styles.row3}>
             <div>
               <label style={styles.label}>Filter by Buyer</label>
-              <select style={styles.input} value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
-                <option value="">All buyers</option>
-                {data.buyers.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={buyerFilter}
+                onChange={setBuyerFilter}
+                options={data.buyers.map((b) => ({ id: b.id, label: b.name }))}
+                placeholder="All buyers"
+              />
             </div>
             <div>
               <label style={styles.label}>Financial Year</label>
@@ -163,12 +162,12 @@ export default function OutstandingTab({ data }) {
           <div style={styles.row3}>
             <div>
               <label style={styles.label}>Filter by Mill</label>
-              <select style={styles.input} value={millFilter} onChange={(e) => setMillFilter(e.target.value)}>
-                <option value="">All mills</option>
-                {data.mills.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={millFilter}
+                onChange={setMillFilter}
+                options={data.mills.map((m) => ({ id: m.id, label: m.name }))}
+                placeholder="All mills"
+              />
             </div>
             <div>
               <label style={styles.label}>Financial Year</label>

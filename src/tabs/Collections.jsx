@@ -6,6 +6,7 @@ import { pendingInvoicesForCollectionEntry, calcCdPct, roundRupee } from "../lib
 import { shareCollection } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function CollectionsTab({ data, addCollection, deleteCollection, updateCdPolicy }) {
   const [showForm, setShowForm] = useState(false);
@@ -43,15 +44,13 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
       })
       .join("");
     const html = `
-      <h2>Collection Report (Cash vs CD)</h2>
-      <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
       <table>
         <thead><tr><th>Date</th><th>Buyer</th><th>Mode</th><th>Reference</th><th>Against Invoice(s)</th><th>Cash Received</th><th>CD Allowed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p><strong>Grand Total Cash Collected: ${formatINR(grandTotalCash)}</strong></p>
+      <p style="margin-top:14px"><strong>Grand Total Cash Collected: ${formatINR(grandTotalCash)}</strong></p>
     `;
-    printReport("Collection Report", html);
+    printReport("Collection Report", html, "Cash received vs Cash Discount allowed, per payment");
   }
 
   return (
@@ -77,14 +76,12 @@ export default function CollectionsTab({ data, addCollection, deleteCollection, 
       <div style={{ ...styles.row3, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
         <div>
           <label style={styles.label}>Buyer</label>
-          <select style={styles.input} value={filterBuyer} onChange={(e) => setFilterBuyer(e.target.value)}>
-            <option value="">All buyers</option>
-            {data.buyers.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={filterBuyer}
+            onChange={setFilterBuyer}
+            options={data.buyers.map((b) => ({ id: b.id, label: b.name }))}
+            placeholder="All buyers"
+          />
         </div>
         <div>
           <label style={styles.label}>From Date</label>
@@ -298,12 +295,12 @@ function CollectionForm({ data, onSave }) {
       <div style={styles.row3}>
         <div>
           <label style={styles.label}>Buyer *</label>
-          <select style={styles.input} value={buyerId} onChange={(e) => { setBuyerId(e.target.value); setSelected({}); }}>
-            <option value="">Select buyer</option>
-            {data.buyers.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={buyerId}
+            onChange={(id) => { setBuyerId(id); setSelected({}); }}
+            options={data.buyers.map((b) => ({ id: b.id, label: b.name, sublabel: b.phone }))}
+            placeholder="Select buyer"
+          />
         </div>
         <div>
           <label style={styles.label}>Payment Date</label>

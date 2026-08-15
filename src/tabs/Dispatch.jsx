@@ -5,6 +5,7 @@ import { formatDate, formatINR, todayISO, ROLL_LENGTH_METERS } from "../lib/stor
 import { computeInvoices, pendingQty } from "../lib/calc";
 import { printReport } from "../lib/print";
 import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function DispatchTab({ data, addDispatch, updateDispatch, deleteDispatch }) {
   const [buyerFilter, setBuyerFilter] = useState("");
@@ -40,8 +41,9 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
       </tr>`
       )
       .join("");
-    const html = `<h2>Dispatch Register</h2><table><thead><tr><th>Indent No</th><th>Buyer</th><th>Mill</th><th>Mill Inv</th><th>Qty</th><th>Rate</th><th>Base Val</th><th>Freight</th><th>GST (5%)</th><th>R/Off</th><th>Total Val</th><th>Variance</th></tr></thead><tbody>${tableRows}</tbody></table>`;
-    printReport("Dispatch Register", html);
+    const totalVal = rows.reduce((s, r) => s + r.value, 0);
+    const html = `<table><thead><tr><th>Indent No</th><th>Buyer</th><th>Mill</th><th>Mill Inv</th><th>Qty</th><th>Rate</th><th>Base Val</th><th>Freight</th><th>GST (5%)</th><th>R/Off</th><th>Total Val</th><th>Variance</th></tr></thead><tbody>${tableRows}</tbody></table><p style="margin-top:14px"><strong>Total Invoice Value: ${formatINR(totalVal)}</strong> (${rows.length} dispatches)</p>`;
+    printReport("Dispatch Register", html, buyerFilter || millFilter || fyFilter ? "Filtered view" : "All dispatches");
   }
 
   function handleDelete(r) {
@@ -70,25 +72,21 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
       <div style={styles.row3}>
         <div>
           <label style={styles.label}>Customer (Buyer)</label>
-          <select style={styles.input} value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
-            <option value="">All buyers</option>
-            {data.buyers.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={buyerFilter}
+            onChange={setBuyerFilter}
+            options={data.buyers.map((b) => ({ id: b.id, label: b.name }))}
+            placeholder="All buyers"
+          />
         </div>
         <div>
           <label style={styles.label}>Mill</label>
-          <select style={styles.input} value={millFilter} onChange={(e) => setMillFilter(e.target.value)}>
-            <option value="">All mills</option>
-            {data.mills.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={millFilter}
+            onChange={setMillFilter}
+            options={data.mills.map((m) => ({ id: m.id, label: m.name }))}
+            placeholder="All mills"
+          />
         </div>
         <div>
           <label style={styles.label}>Financial Year</label>
@@ -340,21 +338,15 @@ function QuickAddDispatch({ data, addDispatch, onDone }) {
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Add Dispatch</div>
 
       <label style={styles.label}>Step 1 — Select Buyer *</label>
-      <select
-        style={styles.input}
+      <SearchableSelect
         value={buyerId}
-        onChange={(e) => {
-          setBuyerId(e.target.value);
+        onChange={(id) => {
+          setBuyerId(id);
           setIndentId("");
         }}
-      >
-        <option value="">Select buyer</option>
-        {data.buyers.map((b) => (
-          <option key={b.id} value={b.id}>
-            {b.name}
-          </option>
-        ))}
-      </select>
+        options={data.buyers.map((b) => ({ id: b.id, label: b.name, sublabel: b.phone }))}
+        placeholder="Select buyer"
+      />
 
       {buyerId && (
         <>
@@ -364,14 +356,16 @@ function QuickAddDispatch({ data, addDispatch, onDone }) {
               No pending indents for {buyerName(buyerId)} — everything is already dispatched, closed, or cancelled.
             </div>
           ) : (
-            <select style={styles.input} value={indentId} onChange={(e) => setIndentId(e.target.value)}>
-              <option value="">Select indent ({pendingIndentsForBuyer.length} pending)</option>
-              {pendingIndentsForBuyer.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.indentNumber} · {millName(i.millId)} · {i.productName} · {pendingQty(i)} {i.unit} pending
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={indentId}
+              onChange={setIndentId}
+              options={pendingIndentsForBuyer.map((i) => ({
+                id: i.id,
+                label: `${i.indentNumber} · ${i.productName}`,
+                sublabel: `${millName(i.millId)} · ${pendingQty(i)} ${i.unit} pending`,
+              }))}
+              placeholder={`Select indent (${pendingIndentsForBuyer.length} pending)`}
+            />
           )}
         </>
       )}

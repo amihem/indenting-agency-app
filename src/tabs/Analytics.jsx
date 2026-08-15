@@ -3,10 +3,33 @@ import React, { useMemo, useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR } from "../lib/storage";
 import { computeInvoices, invoiceWithStatus, getDashboardSummary } from "../lib/calc";
-import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+
+const GRANULARITIES = [
+  ["year", "Year"],
+  ["quarter", "Quarter"],
+  ["month", "Month"],
+  ["day", "Date"],
+];
+
+function getPeriodKey(dateStr, granularity) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d)) return null;
+  if (granularity === "year") return getFY(dateStr); // Indian financial year, matches the rest of the app
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  if (granularity === "quarter") return `${y}-Q${Math.floor((m - 1) / 3) + 1}`;
+  if (granularity === "month") return dateStr.slice(0, 7);
+  return dateStr.slice(0, 10); // day
+}
 
 export default function AnalyticsTab({ data }) {
   const [fyFilter, setFyFilter] = useState("");
+  const [granularity, setGranularity] = useState("month");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "Unknown";
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "Unknown";
 
@@ -16,24 +39,23 @@ export default function AnalyticsTab({ data }) {
   const analyticsData = useMemo(() => {
     const invoices = computeInvoices(data.indents, data.mills)
       .map((inv) => invoiceWithStatus(inv, data.collections))
-      .filter((inv) => matchesFY(inv.invoiceDate, fyFilter));
+      .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
+      .filter((inv) => !fromDate || inv.invoiceDate >= fromDate)
+      .filter((inv) => !toDate || inv.invoiceDate <= toDate);
 
-    const monthlyData = {};
+    const periodData = {};
     const buyerData = {};
     const millData = {};
     const productData = {};
 
     invoices.forEach((inv) => {
-      // Monthly Grouping
-      const monthYear = inv.invoiceDate ? inv.invoiceDate.substring(0, 7) : "Unknown"; // YYYY-MM
-      if (!monthlyData[monthYear]) {
-        monthlyData[monthYear] = { sales: 0, commission: 0, qty: 0 };
-      }
-      monthlyData[monthYear].sales += inv.value;
-      monthlyData[monthYear].commission += inv.commissionRealized;
-      monthlyData[monthYear].qty += inv.qty;
+      const key = getPeriodKey(inv.invoiceDate, granularity) || "Unknown";
+      if (!periodData[key]) periodData[key] = { sales: 0, commission: 0, qty: 0, dispatches: 0 };
+      periodData[key].sales += inv.value;
+      periodData[key].commission += inv.commissionRealized;
+      periodData[key].qty += inv.qty;
+      periodData[key].dispatches += 1;
 
-      // Top Entities
       const bName = buyerName(inv.buyerId);
       buyerData[bName] = (buyerData[bName] || 0) + inv.value;
 
@@ -48,20 +70,21 @@ export default function AnalyticsTab({ data }) {
 
     return {
       invoices,
-      monthly: Object.entries(monthlyData).sort((a, b) => (a[0] > b[0] ? 1 : -1)),
+      periods: Object.entries(periodData).sort((a, b) => (a[0] > b[0] ? 1 : -1)),
       topBuyers: sortTop5(buyerData),
       topMills: sortTop5(millData),
       topProducts: sortTop5(productData),
     };
-  }, [data, fyFilter]);
+  }, [data, fyFilter, fromDate, toDate, granularity]);
 
-  // KPI cards recompute from the FY-filtered invoices so the whole page stays
-  // consistent with the selected year. Overdue / Pending Dispatch stay as
-  // "right now" figures from the full dataset — a past FY's overdue balance
-  // doesn't disappear just because you're viewing an older year.
+  // KPI cards recompute from the filtered invoices so the whole page stays
+  // consistent with the selected period. Overdue / Pending Dispatch stay as
+  // "right now" figures from the full dataset — a past period's overdue
+  // balance doesn't disappear just because you're viewing an older window.
   const fullSummary = useMemo(() => getDashboardSummary(data), [data]);
+  const isFiltered = fyFilter || fromDate || toDate;
   const summary = useMemo(() => {
-    if (!fyFilter) return fullSummary;
+    if (!isFiltered) return fullSummary;
     const inv = analyticsData.invoices;
     return {
       ...fullSummary,
@@ -70,19 +93,74 @@ export default function AnalyticsTab({ data }) {
       totalCommissionAccrued: inv.reduce((s, i) => s + i.commissionAccrued, 0),
       outstanding: inv.reduce((s, i) => s + i.balance, 0),
     };
-  }, [fullSummary, analyticsData, fyFilter]);
+  }, [fullSummary, analyticsData, isFiltered]);
 
-  const maxMonthlySale = Math.max(...analyticsData.monthly.map((m) => m[1].sales), 1);
-  const maxMonthlyCommission = Math.max(...analyticsData.monthly.map((m) => m[1].commission), 1);
+  const maxPeriodSale = Math.max(...analyticsData.periods.map((m) => m[1].sales), 1);
 
   const donutColors = [colors.primary, colors.success, colors.mustard, colors.danger, colors.indigo, "#9CA3AF"];
   const totalBuyerValue = analyticsData.topBuyers.reduce((s, [, v]) => s + v, 0) || 1;
+
+  const periodLabel = (key) => {
+    if (granularity === "day") {
+      const d = new Date(key);
+      return isNaN(d) ? key : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+    }
+    if (granularity === "month") {
+      const d = new Date(key + "-01");
+      return isNaN(d) ? key : d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+    }
+    return key; // year (FY23-24) and quarter (2024-Q2) are already readable
+  };
+
+  function clearFilters() {
+    setFyFilter("");
+    setFromDate("");
+    setToDate("");
+  }
 
   return (
     <div>
       <div style={styles.sectionHeader}>
         <div style={styles.h2}>Business Analytics</div>
-        <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ width: "auto" }} />
+      </div>
+
+      {/* Filter bar: FY quick-filter + custom date range, independent of chart granularity */}
+      <div style={{ ...styles.card, background: colors.bg }}>
+        <div style={styles.row3}>
+          <div>
+            <label style={styles.label}>Financial Year</label>
+            <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0 }} />
+          </div>
+          <div>
+            <label style={styles.label}>From Date</label>
+            <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={styles.label}>To Date</label>
+            <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+        </div>
+        {isFiltered && (
+          <button style={{ ...styles.btnGhost, marginTop: 10, fontSize: 12, padding: "6px 12px" }} onClick={clearFilters}>
+            Clear Filters
+          </button>
+        )}
+
+        <div style={{ marginTop: 14 }}>
+          <label style={styles.label}>Chart Grouping</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {GRANULARITIES.map(([key, label]) => (
+              <button key={key} style={styles.chip(granularity === key)} onClick={() => setGranularity(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {granularity === "day" && analyticsData.periods.length > 60 && (
+            <div style={{ fontSize: 11, color: colors.mustard, marginTop: 6 }}>
+              Tip: {analyticsData.periods.length} days shown — narrow the From/To range above for a clearer chart.
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
@@ -96,12 +174,16 @@ export default function AnalyticsTab({ data }) {
 
       <div style={styles.row2}>
         <div style={styles.card}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Sales Trend</div>
-          <LineChart data={analyticsData.monthly.map(([m, s]) => ({ label: m, value: s.sales }))} color={colors.primary} formatValue={formatINR} />
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>
+            Sales Trend <span style={{ fontWeight: 400, color: colors.textMuted, fontSize: 12 }}>(by {granularity})</span>
+          </div>
+          <LineChart data={analyticsData.periods.map(([k, s]) => ({ label: periodLabel(k), value: s.sales }))} color={colors.primary} formatValue={formatINR} />
         </div>
         <div style={styles.card}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Commission Realized Trend</div>
-          <BarChart data={analyticsData.monthly.map(([m, s]) => ({ label: m, value: s.commission }))} color={colors.success} formatValue={formatINR} />
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>
+            Commission Realized <span style={{ fontWeight: 400, color: colors.textMuted, fontSize: 12 }}>(by {granularity})</span>
+          </div>
+          <BarChart data={analyticsData.periods.map(([k, s]) => ({ label: periodLabel(k), value: s.commission }))} color={colors.success} formatValue={formatINR} />
         </div>
       </div>
 
@@ -111,12 +193,15 @@ export default function AnalyticsTab({ data }) {
       </div>
 
       <div style={styles.card}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>Monthly Trends</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>
+          {GRANULARITIES.find(([k]) => k === granularity)[1]}-wise Trend Table
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Month</th>
+                <th style={styles.th}>{GRANULARITIES.find(([k]) => k === granularity)[1]}</th>
+                <th style={styles.th}>Dispatches</th>
                 <th style={styles.th}>Dispatch Qty</th>
                 <th style={styles.th}>Total Sales</th>
                 <th style={styles.th}>Comm. Realized</th>
@@ -124,9 +209,10 @@ export default function AnalyticsTab({ data }) {
               </tr>
             </thead>
             <tbody>
-              {analyticsData.monthly.map(([month, stats]) => (
-                <tr key={month}>
-                  <td style={{ ...styles.td, fontWeight: "bold" }}>{month}</td>
+              {analyticsData.periods.map(([period, stats]) => (
+                <tr key={period}>
+                  <td style={{ ...styles.td, fontWeight: "bold" }}>{periodLabel(period)}</td>
+                  <td style={styles.td}>{stats.dispatches}</td>
                   <td style={styles.td}>{stats.qty}</td>
                   <td style={styles.td}>{formatINR(stats.sales)}</td>
                   <td style={{ ...styles.td, color: colors.success }}>{formatINR(stats.commission)}</td>
@@ -134,7 +220,7 @@ export default function AnalyticsTab({ data }) {
                     <div style={{ width: "100%", backgroundColor: "#eee", borderRadius: 4, height: 12 }}>
                       <div
                         style={{
-                          width: `${(stats.sales / maxMonthlySale) * 100}%`,
+                          width: `${(stats.sales / maxPeriodSale) * 100}%`,
                           backgroundColor: colors.primary,
                           height: "100%",
                           borderRadius: 4,
@@ -144,8 +230,8 @@ export default function AnalyticsTab({ data }) {
                   </td>
                 </tr>
               ))}
-              {analyticsData.monthly.length === 0 && (
-                <tr><td colSpan={5} style={styles.td}>No data available for analytics.</td></tr>
+              {analyticsData.periods.length === 0 && (
+                <tr><td colSpan={6} style={styles.td}>No data available for the selected filters.</td></tr>
               )}
             </tbody>
           </table>
@@ -183,6 +269,7 @@ function LineChart({ data, color, formatValue }) {
     return { x, y, ...d };
   });
   const path = points.map((p) => `${p.x},${p.y}`).join(" ");
+  const skipLabels = data.length > 14 ? Math.ceil(data.length / 14) : 1;
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "auto" }}>
@@ -190,11 +277,12 @@ function LineChart({ data, color, formatValue }) {
       <polyline fill="none" stroke={color} strokeWidth="2" points={path} />
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={p.x} cy={p.y} r="3.5" fill={color} />
-          <text x={p.x} y={h - 4} fontSize="9" textAnchor="middle" fill={colors.textMuted}>{p.label.slice(2)}</text>
-          <text x={p.x} y={p.y - 8} fontSize="9" textAnchor="middle" fill={colors.textMuted}>
-            {formatValue(p.value)}
-          </text>
+          <circle cx={p.x} cy={p.y} r="3" fill={color} />
+          {i % skipLabels === 0 && (
+            <text x={p.x} y={h - 4} fontSize="8" textAnchor="middle" fill={colors.textMuted}>
+              {p.label}
+            </text>
+          )}
         </g>
       ))}
     </svg>
@@ -208,6 +296,7 @@ function BarChart({ data, color, formatValue }) {
   const w = 500, h = 180, padX = 30, padY = 20;
   const max = Math.max(...data.map((d) => d.value), 1);
   const barW = (w - padX * 2) / data.length;
+  const skipLabels = data.length > 14 ? Math.ceil(data.length / 14) : 1;
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "auto" }}>
@@ -219,10 +308,11 @@ function BarChart({ data, color, formatValue }) {
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW * 0.7} height={barH} fill={color} rx="2" />
-            <text x={x + barW * 0.35} y={h - 4} fontSize="9" textAnchor="middle" fill={colors.textMuted}>{d.label.slice(2)}</text>
-            <text x={x + barW * 0.35} y={y - 4} fontSize="9" textAnchor="middle" fill={colors.textMuted}>
-              {formatValue(d.value)}
-            </text>
+            {i % skipLabels === 0 && (
+              <text x={x + barW * 0.35} y={h - 4} fontSize="8" textAnchor="middle" fill={colors.textMuted}>
+                {d.label}
+              </text>
+            )}
           </g>
         );
       })}

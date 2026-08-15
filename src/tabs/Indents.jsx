@@ -6,6 +6,7 @@ import { indentOrderValue, totalDispatchedQty, pendingQty } from "../lib/calc";
 import { shareIndent } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
+import SearchableSelect from "../components/SearchableSelect";
 
 const emptyForm = {
   buyerId: "",
@@ -107,7 +108,6 @@ export default function IndentsTab({
     const buyer = getBuyer(indent.buyerId);
     const mill = getMill(indent.millId);
     const html = `
-      <h2>Indent Confirmation</h2>
       <table>
         <tr><th>Indent No.</th><td>${indent.indentNumber}</td><th>Indent Date</th><td>${formatDate(indent.date)}</td></tr>
         <tr><th>Supplier (Mill)</th><td colspan="3">${mill?.name || "—"}${mill?.address ? " · " + mill.address : ""}${mill?.phone ? " · " + mill.phone : ""}</td></tr>
@@ -138,7 +138,7 @@ export default function IndentsTab({
         </tr>
       </table>
     `;
-    printReport(`Indent ${indent.indentNumber}`, html);
+    printReport(`Indent ${indent.indentNumber}`, html, "Indent Confirmation");
   }
 
   const availableFYs = collectFYs([[data.indents, (i) => i.date]]);
@@ -167,21 +167,21 @@ export default function IndentsTab({
           <div style={styles.row2}>
             <div>
               <label style={styles.label}>Buyer *</label>
-              <select style={styles.input} value={form.buyerId} onChange={(e) => setForm({ ...form, buyerId: e.target.value })}>
-                <option value="">Select buyer</option>
-                {data.buyers.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={form.buyerId}
+                onChange={(id) => setForm({ ...form, buyerId: id })}
+                options={data.buyers.map((b) => ({ id: b.id, label: b.name, sublabel: b.phone }))}
+                placeholder="Select buyer"
+              />
             </div>
             <div>
               <label style={styles.label}>Mill *</label>
-              <select style={styles.input} value={form.millId} onChange={(e) => setForm({ ...form, millId: e.target.value })}>
-                <option value="">Select mill</option>
-                {data.mills.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={form.millId}
+                onChange={(id) => setForm({ ...form, millId: id })}
+                options={data.mills.map((m) => ({ id: m.id, label: m.name, sublabel: m.phone }))}
+                placeholder="Select mill"
+              />
             </div>
           </div>
 
@@ -191,19 +191,15 @@ export default function IndentsTab({
               No products added yet. Add one in Masters → Products first.
             </div>
           ) : (
-            <select
-              style={styles.input}
+            <SearchableSelect
               value={form.productId}
-              onChange={(e) => {
-                const p = data.products.find((prod) => prod.id === e.target.value);
-                setForm({ ...form, productId: e.target.value, productName: p?.name || "", unit: p?.unit || "meters" });
+              onChange={(id) => {
+                const p = data.products.find((prod) => prod.id === id);
+                setForm({ ...form, productId: id, productName: p?.name || "", unit: p?.unit || "meters" });
               }}
-            >
-              <option value="">Select product</option>
-              {data.products.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+              options={data.products.map((p) => ({ id: p.id, label: p.name, sublabel: p.unit }))}
+              placeholder="Select product"
+            />
           )}
 
           <label style={styles.label}>Shade / Dyeing</label>

@@ -59,16 +59,14 @@ function ReportTable({ title, rows, columns, onExport }) {
   );
 }
 
-function exportTable(title, columns, rows) {
+function exportTable(title, columns, rows, subtitle) {
   const html = `
-    <h2>${title}</h2>
-    <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
     <table>
       <thead><tr>${columns.map((c) => `<th>${c}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
     </table>
   `;
-  printReport(title, html);
+  printReport(title, html, subtitle || `Generated on ${new Date().toLocaleDateString("en-IN")}`);
 }
 
 export default function ReportsTab({ data, initialSection }) {

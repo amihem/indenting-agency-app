@@ -5,6 +5,7 @@ import { formatINR, formatDate, formatBalance } from "../lib/storage";
 import { ledgerEntries } from "../lib/calc";
 import { printReport } from "../lib/print";
 import { collectFYs, getFYDateRange, FYSelect } from "../lib/fy.jsx";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function LedgerTab({ data }) {
   const [entityType, setEntityType] = useState("buyer");
@@ -58,17 +59,15 @@ export default function LedgerTab({ data }) {
       )
       .join("");
     const html = `
-      <h2>Account Ledger — ${entityName}${fyFilter ? ` (${fyFilter})` : ""}</h2>
-      <p>Generated on ${new Date().toLocaleDateString("en-IN")}</p>
       <table>
         <thead>
           <tr><th>Doc/Transaction Date</th><th>Particular</th><th>Debit Amt</th><th>Credit Amt</th><th>Balance</th></tr>
         </thead>
         <tbody>${openingRow}${rows}</tbody>
       </table>
-      <p><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
+      <p style="text-align:right; margin-top:14px"><strong>Total Balance: ${formatBalance(totalBalance)}</strong></p>
     `;
-    printReport(`Ledger - ${entityName}`, html);
+    printReport(`Account Ledger — ${entityName}`, html, `${entityType === "buyer" ? "Buyer" : "Mill"} Account${fyFilter ? ` · ${fyFilter}` : ""} · Generated ${new Date().toLocaleDateString("en-IN")}`);
   }
 
   return (
@@ -99,14 +98,12 @@ export default function LedgerTab({ data }) {
         </div>
         <div>
           <label style={styles.label}>{entityType === "buyer" ? "Buyer" : "Mill"}</label>
-          <select style={styles.input} value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-            <option value="">Select {entityType}</option>
-            {entities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={entityId}
+            onChange={setEntityId}
+            options={entities.map((e) => ({ id: e.id, label: e.name }))}
+            placeholder={`Select ${entityType}`}
+          />
         </div>
         <div>
           <label style={styles.label}>Financial Year</label>
