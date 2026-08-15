@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#152a63"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Package box -->
+  <g transform="translate(256 268)">
+    <!-- box top diamond -->
+    <polygon points="0,-118 118,-59 0,0 -118,-59" fill="#F59E0B"/>
+    <!-- left face -->
+    <polygon points="-118,-59 0,0 0,118 -118,59" fill="#FFFFFF" fill-opacity="0.92"/>
+    <!-- right face -->
+    <polygon points="118,-59 0,0 0,118 118,59" fill="#FFFFFF" fill-opacity="0.72"/>
+    <!-- seam lines -->
+    <line x1="0" y1="0" x2="0" y2="118" stroke="#1E3A8A" stroke-width="4" stroke-opacity="0.25"/>
+    <line x1="-118" y1="-59" x2="0" y2="0" stroke="#1E3A8A" stroke-width="4" stroke-opacity="0.15"/>
+    <line x1="118" y1="-59" x2="0" y2="0" stroke="#1E3A8A" stroke-width="4" stroke-opacity="0.15"/>
+    <!-- tape -->
+    <line x1="0" y1="-118" x2="0" y2="0" stroke="#1E3A8A" stroke-width="10" stroke-opacity="0.35"/>
+  </g>
+</svg>
