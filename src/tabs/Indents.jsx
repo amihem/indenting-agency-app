@@ -39,6 +39,7 @@ export default function IndentsTab({
   const [editingId, setEditingId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
   const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
@@ -143,14 +144,26 @@ export default function IndentsTab({
 
   const availableFYs = collectFYs([[data.indents, (i) => i.date]]);
 
-  const visibleIndents = data.indents
-    .filter((i) => !filterStatus || i.status === filterStatus)
-    .filter((i) => matchesFY(i.date, fyFilter))
-    .sort((a, b) => {
-      const dateDiff = new Date(a.date) - new Date(b.date);
-      if (dateDiff !== 0) return dateDiff;
-      return (a.indentNumber || "").localeCompare(b.indentNumber || "", undefined, { numeric: true });
-    });
+  const hasActiveFilter = Boolean(filterStatus || searchQuery.trim());
+
+  const visibleIndents = hasActiveFilter
+    ? data.indents
+        .filter((i) => !filterStatus || filterStatus === "ALL" || i.status === filterStatus)
+        .filter((i) => matchesFY(i.date, fyFilter))
+        .filter((i) => {
+          const q = searchQuery.trim().toLowerCase();
+          if (!q) return true;
+          return (
+            (i.indentNumber || "").toLowerCase().includes(q) ||
+            buyerName(i.buyerId).toLowerCase().includes(q)
+          );
+        })
+        .sort((a, b) => {
+          const dateDiff = new Date(a.date) - new Date(b.date);
+          if (dateDiff !== 0) return dateDiff;
+          return (a.indentNumber || "").localeCompare(b.indentNumber || "", undefined, { numeric: true });
+        })
+    : [];
 
   return (
     <div>
@@ -286,11 +299,11 @@ export default function IndentsTab({
         </div>
       )}
 
-      <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <select style={{ ...styles.input, marginBottom: 0, width: "auto" }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          <option value="">All statuses</option>
+          <option value="">— Select Status —</option>
+          <option value="ALL">All Statuses</option>
           <option value="pending">Pending</option>
-          <option value="confirmed">Confirmed</option>
           <option value="partial_dispatch">Partial Dispatch</option>
           <option value="fulfilled">Fulfilled</option>
           <option value="closed">Closed</option>
@@ -299,6 +312,23 @@ export default function IndentsTab({
         <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0, width: "auto" }} />
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <input
+          style={{ ...styles.input, marginBottom: 0 }}
+          type="text"
+          placeholder="🔍 Search by Indent No or Customer name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      {!hasActiveFilter && (
+        <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted, padding: 28 }}>
+          Select a status above, or search by Indent No / Customer name, to view indents.
+        </div>
+      )}
+
+      {hasActiveFilter && (
       <div style={{ ...styles.card, overflowX: "auto" }}>
         <table style={styles.table}>
           <thead>
@@ -319,29 +349,86 @@ export default function IndentsTab({
               const dispatched = totalDispatchedQty(indent);
               const pending = pendingQty(indent);
               const [bg, fg] = statusColors[indent.status] || statusColors.pending;
+              const isExpanded = expandedId === indent.id;
               return (
-                <tr key={indent.id}>
-                  <td style={styles.td}>
-                    <button
-                      style={{ background: "none", border: "none", color: colors.indigo, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      onClick={() => setExpandedId(expandedId === indent.id ? null : indent.id)}
-                    >
-                      {indent.indentNumber}
-                    </button>
-                  </td>
-                  <td style={styles.td}>{formatDate(indent.date)}</td>
-                  <td style={styles.td}>{buyerName(indent.buyerId)}</td>
-                  <td style={{ ...styles.td, whiteSpace: "normal" }}>{indent.productName}</td>
-                  <td style={styles.td}>{indent.quantity} {indent.unit}</td>
-                  <td style={styles.td}>{dispatched} {indent.unit}</td>
-                  <td style={styles.td}>{pending} {indent.unit}</td>
-                  <td style={styles.td}><span style={styles.badge(bg, fg)}>{indent.status}</span></td>
-                  <td style={styles.td}>
-                    <button style={{ ...styles.btnGhost, padding: "4px 8px", fontSize: 11 }} onClick={() => setExpandedId(expandedId === indent.id ? null : indent.id)}>
-                      {expandedId === indent.id ? "Hide" : "Details"}
-                    </button>
-                  </td>
-                </tr>
+                <React.Fragment key={indent.id}>
+                  <tr>
+                    <td style={styles.td}>
+                      <button
+                        style={{ background: "none", border: "none", color: colors.indigo, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                        onClick={() => setExpandedId(isExpanded ? null : indent.id)}
+                      >
+                        {indent.indentNumber}
+                      </button>
+                    </td>
+                    <td style={styles.td}>{formatDate(indent.date)}</td>
+                    <td style={styles.td}>{buyerName(indent.buyerId)}</td>
+                    <td style={{ ...styles.td, whiteSpace: "normal" }}>{indent.productName}</td>
+                    <td style={styles.td}>{indent.quantity} {indent.unit}</td>
+                    <td style={styles.td}>{dispatched} {indent.unit}</td>
+                    <td style={styles.td}>{pending} {indent.unit}</td>
+                    <td style={styles.td}><span style={styles.badge(bg, fg)}>{indent.status}</span></td>
+                    <td style={styles.td}>
+                      <button style={{ ...styles.btnGhost, padding: "4px 8px", fontSize: 11 }} onClick={() => setExpandedId(isExpanded ? null : indent.id)}>
+                        {isExpanded ? "Hide" : "Details"}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td style={{ ...styles.td, whiteSpace: "normal" }} colSpan={9}>
+                        <div style={{ padding: "10px 4px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                            <strong>{indent.indentNumber}</strong> — {millName(indent.millId)}
+                          </div>
+                          <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8 }}>
+                            {indent.shade && <div>Shade/Dyeing: {indent.shade}</div>}
+                            {indent.orderIn === "rolls" && <div>Ordered as: {indent.rolls} rolls ({ROLL_LENGTH_METERS}m each)</div>}
+                            {indent.deliveryInstruction && <div>Delivery Instruction: {indent.deliveryInstruction}</div>}
+                            {indent.transport && <div>Transport: {indent.transport}</div>}
+                            {indent.packingInstruction && <div>Packing Instruction: {indent.packingInstruction}</div>}
+                            {indent.remark && <div>Remark: {indent.remark}</div>}
+                          </div>
+
+                          <div style={{ marginBottom: 8 }}>
+                            <select
+                              style={{ ...styles.input, marginBottom: 0, width: "auto", padding: "6px 8px" }}
+                              value={indent.status}
+                              onChange={(e) => updateIndent(indent.id, { status: e.target.value })}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="partial_dispatch">Partial Dispatch</option>
+                              <option value="fulfilled">Fulfilled</option>
+                              <option value="closed">Closed</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                            {indent.status === "closed" && (
+                              <span style={{ marginLeft: 8, fontSize: 11, color: colors.textMuted }}>
+                                Closed indents stay in this list — find them anytime via Status = "Closed" above.
+                              </span>
+                            )}
+                          </div>
+
+                          <DispatchSection indent={indent} addDispatch={addDispatch} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />
+
+                          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                            <button style={styles.btnWhatsapp} onClick={() => shareIndent(indent, getBuyer(indent.buyerId), getMill(indent.millId))}>
+                              Share (WA)
+                            </button>
+                            <button style={styles.btnPdf} onClick={() => exportIndentPDF(indent)}>
+                              Export PDF
+                            </button>
+                            {indent.status !== "closed" && indent.status !== "cancelled" && (
+                              <button style={styles.btnGhost} onClick={() => closeIndent(indent)}>Close Indent</button>
+                            )}
+                            <button style={styles.btnGhost} onClick={() => startEdit(indent)}>Edit</button>
+                            <button style={styles.btnDanger} onClick={() => handleDeleteIndent(indent)}>Delete</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
             {visibleIndents.length === 0 && (
@@ -350,53 +437,7 @@ export default function IndentsTab({
           </tbody>
         </table>
       </div>
-
-      {visibleIndents.filter((i) => i.id === expandedId).map((indent) => (
-        <div key={indent.id} style={styles.listItem}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <strong>{indent.indentNumber}</strong> — {millName(indent.millId)}
-          </div>
-          <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8 }}>
-            {indent.shade && <div>Shade/Dyeing: {indent.shade}</div>}
-            {indent.orderIn === "rolls" && <div>Ordered as: {indent.rolls} rolls ({ROLL_LENGTH_METERS}m each)</div>}
-            {indent.deliveryInstruction && <div>Delivery Instruction: {indent.deliveryInstruction}</div>}
-            {indent.transport && <div>Transport: {indent.transport}</div>}
-            {indent.packingInstruction && <div>Packing Instruction: {indent.packingInstruction}</div>}
-            {indent.remark && <div>Remark: {indent.remark}</div>}
-          </div>
-
-          <div style={{ marginBottom: 8 }}>
-            <select
-              style={{ ...styles.input, marginBottom: 0, width: "auto", padding: "6px 8px" }}
-              value={indent.status}
-              onChange={(e) => updateIndent(indent.id, { status: e.target.value })}
-            >
-              <option value="pending">Pending</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="partial_dispatch">Partial Dispatch</option>
-              <option value="fulfilled">Fulfilled</option>
-              <option value="closed">Closed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <DispatchSection indent={indent} addDispatch={addDispatch} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />
-
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button style={styles.btnWhatsapp} onClick={() => shareIndent(indent, getBuyer(indent.buyerId), getMill(indent.millId))}>
-              Share (WA)
-            </button>
-            <button style={styles.btnPdf} onClick={() => exportIndentPDF(indent)}>
-              Export PDF
-            </button>
-            {indent.status !== "closed" && indent.status !== "cancelled" && (
-              <button style={styles.btnGhost} onClick={() => closeIndent(indent)}>Close Indent</button>
-            )}
-            <button style={styles.btnGhost} onClick={() => startEdit(indent)}>Edit</button>
-            <button style={styles.btnDanger} onClick={() => handleDeleteIndent(indent)}>Delete</button>
-          </div>
-        </div>
-      ))}
+      )}
     </div>
   );
 }
