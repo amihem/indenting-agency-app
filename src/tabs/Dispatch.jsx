@@ -11,6 +11,7 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [mismatchOnly, setMismatchOnly] = useState(false);
   const [editingKey, setEditingKey] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -22,12 +23,27 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
   const availableFYs = collectFYs([[allInvoices, (i) => i.invoiceDate]]);
   const mismatchCount = allInvoices.filter((i) => i.hasActual && Math.abs(i.variance) > 0.5).length;
 
-  const rows = allInvoices
-    .filter((inv) => !buyerFilter || inv.buyerId === buyerFilter)
-    .filter((inv) => !millFilter || inv.millId === millFilter)
-    .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
-    .filter((inv) => !mismatchOnly || (inv.hasActual && Math.abs(inv.variance) > 0.5))
-    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+  const hasActiveFilter = Boolean(buyerFilter || millFilter || fyFilter || searchQuery.trim() || mismatchOnly);
+
+  const q = searchQuery.trim().toLowerCase();
+  const rows = hasActiveFilter
+    ? allInvoices
+        .filter((inv) => !buyerFilter || inv.buyerId === buyerFilter)
+        .filter((inv) => !millFilter || inv.millId === millFilter)
+        .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
+        .filter((inv) => !mismatchOnly || (inv.hasActual && Math.abs(inv.variance) > 0.5))
+        .filter(
+          (inv) =>
+            !q ||
+            (inv.indentNumber || "").toLowerCase().includes(q) ||
+            (inv.invoiceNo || "").toLowerCase().includes(q) ||
+            buyerName(inv.buyerId).toLowerCase().includes(q) ||
+            millName(inv.millId).toLowerCase().includes(q) ||
+            (inv.invoiceDate || "").includes(q) ||
+            formatDate(inv.invoiceDate).toLowerCase().includes(q)
+        )
+        .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate))
+    : [];
 
   function exportPDF() {
     const tableRows = rows
@@ -69,6 +85,16 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
         <QuickAddDispatch data={data} addDispatch={addDispatch} onDone={() => setShowAddForm(false)} />
       )}
 
+      <div style={{ marginBottom: 12 }}>
+        <input
+          style={{ ...styles.input, marginBottom: 0 }}
+          type="text"
+          placeholder="🔍 Search by Dispatch Date, Customer, Mill, Indent No, or Invoice No..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <div style={styles.row3}>
         <div>
           <label style={styles.label}>Customer (Buyer)</label>
@@ -94,6 +120,14 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
         </div>
       </div>
 
+      {!hasActiveFilter && (
+        <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted, padding: 24 }}>
+          Search above, or select a Buyer / Mill / Financial Year, to view dispatch entries.
+        </div>
+      )}
+
+      {hasActiveFilter && (
+      <>
       <div style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
         Showing {rows.length} of {allInvoices.length} dispatch entries.
         {millFilter && ` Filtered to: ${millName(millFilter)}.`}
@@ -189,6 +223,8 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }
