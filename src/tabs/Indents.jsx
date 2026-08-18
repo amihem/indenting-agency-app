@@ -39,6 +39,8 @@ export default function IndentsTab({
   const [editingId, setEditingId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
@@ -144,12 +146,14 @@ export default function IndentsTab({
 
   const availableFYs = collectFYs([[data.indents, (i) => i.date]]);
 
-  const hasActiveFilter = Boolean(filterStatus || searchQuery.trim());
+  const hasActiveFilter = Boolean(filterStatus || searchQuery.trim() || fromDate || toDate);
 
   const visibleIndents = hasActiveFilter
     ? data.indents
         .filter((i) => !filterStatus || filterStatus === "ALL" || i.status === filterStatus)
         .filter((i) => matchesFY(i.date, fyFilter))
+        .filter((i) => !fromDate || i.date >= fromDate)
+        .filter((i) => !toDate || i.date <= toDate)
         .filter((i) => {
           const q = searchQuery.trim().toLowerCase();
           if (!q) return true;
@@ -299,7 +303,7 @@ export default function IndentsTab({
         </div>
       )}
 
-      <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
         <select style={{ ...styles.input, marginBottom: 0, width: "auto" }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="">— Select Status —</option>
           <option value="ALL">All Statuses</option>
@@ -310,6 +314,25 @@ export default function IndentsTab({
           <option value="cancelled">Cancelled</option>
         </select>
         <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0, width: "auto" }} />
+        <div>
+          <label style={{ ...styles.label, marginBottom: 2 }}>From Date</label>
+          <input style={{ ...styles.input, marginBottom: 0, width: "auto" }} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label style={{ ...styles.label, marginBottom: 2 }}>To Date</label>
+          <input style={{ ...styles.input, marginBottom: 0, width: "auto" }} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        {(fromDate || toDate) && (
+          <button
+            style={{ ...styles.btnGhost, height: 38 }}
+            onClick={() => {
+              setFromDate("");
+              setToDate("");
+            }}
+          >
+            Clear Dates
+          </button>
+        )}
       </div>
 
       <div style={{ marginBottom: 12 }}>
@@ -324,7 +347,7 @@ export default function IndentsTab({
 
       {!hasActiveFilter && (
         <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted, padding: 28 }}>
-          Select a status above, or search by Indent No / Customer name, to view indents.
+          Select a status, a date range, or search by Indent No / Customer name, to view indents.
         </div>
       )}
 
