@@ -11,6 +11,8 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
   const [buyerFilter, setBuyerFilter] = useState("");
   const [millFilter, setMillFilter] = useState("");
   const [fyFilter, setFyFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [mismatchOnly, setMismatchOnly] = useState(false);
   const [editingKey, setEditingKey] = useState(null);
@@ -23,7 +25,7 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
   const availableFYs = collectFYs([[allInvoices, (i) => i.invoiceDate]]);
   const mismatchCount = allInvoices.filter((i) => i.hasActual && Math.abs(i.variance) > 0.5).length;
 
-  const hasActiveFilter = Boolean(buyerFilter || millFilter || fyFilter || searchQuery.trim() || mismatchOnly);
+  const hasActiveFilter = Boolean(buyerFilter || millFilter || fyFilter || fromDate || toDate || searchQuery.trim() || mismatchOnly);
 
   const q = searchQuery.trim().toLowerCase();
   const rows = hasActiveFilter
@@ -31,6 +33,8 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
         .filter((inv) => !buyerFilter || inv.buyerId === buyerFilter)
         .filter((inv) => !millFilter || inv.millId === millFilter)
         .filter((inv) => matchesFY(inv.invoiceDate, fyFilter))
+        .filter((inv) => !fromDate || inv.invoiceDate >= fromDate)
+        .filter((inv) => !toDate || inv.invoiceDate <= toDate)
         .filter((inv) => !mismatchOnly || (inv.hasActual && Math.abs(inv.variance) > 0.5))
         .filter(
           (inv) =>
@@ -71,12 +75,12 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
     <div>
       <div style={styles.sectionHeader}>
         <div style={styles.h2}>Dispatch Tracking</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={styles.btn} onClick={() => setShowAddForm((s) => !s)}>
-            {showAddForm ? "Cancel" : "+ Add Dispatch"}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button style={{ ...styles.btn, whiteSpace: "nowrap" }} onClick={() => setShowAddForm((s) => !s)}>
+            {showAddForm ? "✕ Cancel" : "+ Add Dispatch"}
           </button>
-          <button style={styles.btnPdf} onClick={exportPDF}>
-            Export PDF
+          <button style={{ ...styles.btnPdf, whiteSpace: "nowrap" }} onClick={exportPDF}>
+            📄 Export PDF
           </button>
         </div>
       </div>
@@ -95,7 +99,7 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
         />
       </div>
 
-      <div style={styles.row3}>
+      <div style={styles.filterBar}>
         <div>
           <label style={styles.label}>Customer (Buyer)</label>
           <SearchableSelect
@@ -116,13 +120,34 @@ export default function DispatchTab({ data, addDispatch, updateDispatch, deleteD
         </div>
         <div>
           <label style={styles.label}>Financial Year</label>
-          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} />
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0 }} />
         </div>
+        <div>
+          <label style={styles.label}>From Date</label>
+          <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label style={styles.label}>To Date</label>
+          <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        {(fromDate || toDate) && (
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button
+              style={{ ...styles.btnGhost, width: "100%", height: 38 }}
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+              }}
+            >
+              Clear Dates
+            </button>
+          </div>
+        )}
       </div>
 
       {!hasActiveFilter && (
         <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted, padding: 24 }}>
-          Search above, or select a Buyer / Mill / Financial Year, to view dispatch entries.
+          Search above, or select a Buyer / Mill / Financial Year / Date range, to view dispatch entries.
         </div>
       )}
 

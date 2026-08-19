@@ -303,38 +303,6 @@ export default function IndentsTab({
         </div>
       )}
 
-      <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <select style={{ ...styles.input, marginBottom: 0, width: "auto" }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          <option value="">— Select Status —</option>
-          <option value="ALL">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="partial_dispatch">Partial Dispatch</option>
-          <option value="fulfilled">Fulfilled</option>
-          <option value="closed">Closed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0, width: "auto" }} />
-        <div>
-          <label style={{ ...styles.label, marginBottom: 2 }}>From Date</label>
-          <input style={{ ...styles.input, marginBottom: 0, width: "auto" }} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        </div>
-        <div>
-          <label style={{ ...styles.label, marginBottom: 2 }}>To Date</label>
-          <input style={{ ...styles.input, marginBottom: 0, width: "auto" }} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        </div>
-        {(fromDate || toDate) && (
-          <button
-            style={{ ...styles.btnGhost, height: 38 }}
-            onClick={() => {
-              setFromDate("");
-              setToDate("");
-            }}
-          >
-            Clear Dates
-          </button>
-        )}
-      </div>
-
       <div style={{ marginBottom: 12 }}>
         <input
           style={{ ...styles.input, marginBottom: 0 }}
@@ -343,6 +311,46 @@ export default function IndentsTab({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+      </div>
+
+      <div style={styles.filterBar}>
+        <div>
+          <label style={styles.label}>Status</label>
+          <select style={{ ...styles.input, marginBottom: 0 }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="">— Select Status —</option>
+            <option value="ALL">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="partial_dispatch">Partial Dispatch</option>
+            <option value="fulfilled">Fulfilled</option>
+            <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div>
+          <label style={styles.label}>Financial Year</label>
+          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0 }} />
+        </div>
+        <div>
+          <label style={styles.label}>From Date</label>
+          <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </div>
+        <div>
+          <label style={styles.label}>To Date</label>
+          <input style={{ ...styles.input, marginBottom: 0 }} type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </div>
+        {(fromDate || toDate) && (
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
+            <button
+              style={{ ...styles.btnGhost, width: "100%", height: 38 }}
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+              }}
+            >
+              Clear Dates
+            </button>
+          </div>
+        )}
       </div>
 
       {!hasActiveFilter && (
