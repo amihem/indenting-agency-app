@@ -130,6 +130,15 @@ export const styles = {
     gap: 12, 
     marginBottom: 12 
   },
+  // Responsive filter bar — every field is the same width and wraps in
+  // neat full rows on mobile instead of leaving one field stranded alone.
+  filterBar: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 12,
+    alignItems: "end",
+    marginBottom: 12,
+  },
   label: { 
     display: "block", 
     fontSize: 12, 
