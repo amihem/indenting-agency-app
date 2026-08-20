@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { styles, colors } from "./styles";
-import { loadData, saveData, uid, todayISO } from "./lib/storage";
+import { loadData, saveData, uid, todayISO, nextPaymentId, backfillPaymentIds } from "./lib/storage";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { loadCloudData, saveCloudData, subscribeToCloudChanges } from "./lib/cloudSync";
 import Auth from "./Auth";
@@ -157,6 +157,15 @@ function MainApp({ session }) {
     });
     return unsubscribe;
   }, []);
+
+  /* ---------- One-time migration: backfill Payment IDs onto older payments ---------- */
+  useEffect(() => {
+    const withIds = backfillPaymentIds(data.collections);
+    if (withIds !== data.collections) {
+      setData((d) => ({ ...d, collections: withIds }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.collections]);
 
   /* ---------- Save on every change: local cache instantly, cloud debounced ---------- */
   useEffect(() => {
@@ -333,7 +342,13 @@ function MainApp({ session }) {
     }));
 
   /* ---------- Collections & Notes ---------- */
-  const addCollection = (collection) => setData((d) => ({ ...d, collections: [{ id: uid(), ...collection }, ...d.collections] }));
+  const addCollection = (collection) =>
+    setData((d) => ({
+      ...d,
+      collections: [{ id: uid(), paymentId: nextPaymentId(d.collections), ...collection }, ...d.collections],
+    }));
+  const updateCollection = (id, changes) =>
+    setData((d) => ({ ...d, collections: d.collections.map((c) => (c.id === id ? { ...c, ...changes } : c)) }));
   const deleteCollection = (id) => setData((d) => ({ ...d, collections: d.collections.filter((c) => c.id !== id) }));
 
   const addDebitNote = (note) => setData((d) => ({ ...d, debitNotes: [{ id: uid(), ...note }, ...d.debitNotes] }));
@@ -479,7 +494,7 @@ function MainApp({ session }) {
         )}
         {tab === "dispatch" && <DispatchTab data={data} addDispatch={addDispatch} updateDispatch={updateDispatch} deleteDispatch={deleteDispatch} />}
         {tab === "collections" && (
-          <CollectionsTab data={data} addCollection={addCollection} deleteCollection={deleteCollection} updateCdPolicy={updateCdPolicy} />
+          <CollectionsTab data={data} addCollection={addCollection} updateCollection={updateCollection} deleteCollection={deleteCollection} updateCdPolicy={updateCdPolicy} />
         )}
         {tab === "debitnotes" && <DebitNoteTab data={data} addDebitNote={addDebitNote} deleteDebitNote={deleteDebitNote} />}
         {tab === "creditnotes" && <CreditNoteTab data={data} addCreditNote={addCreditNote} deleteCreditNote={deleteCreditNote} />}
