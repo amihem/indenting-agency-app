@@ -5,7 +5,6 @@ import { formatINR, formatDate, todayISO, ROLL_LENGTH_METERS } from "../lib/stor
 import { indentOrderValue, totalDispatchedQty, pendingQty } from "../lib/calc";
 import { shareIndent } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
-import { getFY, collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 import SearchableSelect from "../components/SearchableSelect";
 
 const emptyForm = {
@@ -38,7 +37,6 @@ export default function IndentsTab({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
-  const [fyFilter, setFyFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -144,14 +142,11 @@ export default function IndentsTab({
     printReport(`Indent ${indent.indentNumber}`, html, "Indent Confirmation");
   }
 
-  const availableFYs = collectFYs([[data.indents, (i) => i.date]]);
-
   const hasActiveFilter = Boolean(filterStatus || searchQuery.trim() || fromDate || toDate);
 
   const visibleIndents = hasActiveFilter
     ? data.indents
         .filter((i) => !filterStatus || filterStatus === "ALL" || i.status === filterStatus)
-        .filter((i) => matchesFY(i.date, fyFilter))
         .filter((i) => !fromDate || i.date >= fromDate)
         .filter((i) => !toDate || i.date <= toDate)
         .filter((i) => {
@@ -325,10 +320,6 @@ export default function IndentsTab({
             <option value="closed">Closed</option>
             <option value="cancelled">Cancelled</option>
           </select>
-        </div>
-        <div>
-          <label style={styles.label}>Financial Year</label>
-          <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ marginBottom: 0 }} />
         </div>
         <div>
           <label style={styles.label}>From Date</label>

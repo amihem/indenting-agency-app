@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate, todayISO } from "../lib/storage";
-import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
 import { buyerOutstandingInvoices } from "../lib/calc";
 import SearchableSelect from "../components/SearchableSelect";
 
@@ -109,22 +108,14 @@ function NoteForm({ data, onAdd, label }) {
 }
 
 function NoteList({ items, buyers, onDelete, accentColor }) {
-  const [fyFilter, setFyFilter] = useState("");
-  const availableFYs = collectFYs([[items, (n) => n.date]]);
-
   const buyerName = (id) => buyers.find((b) => b.id === id)?.name || "—";
-  const filtered = items.filter((n) => matchesFY(n.date, fyFilter));
-  const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
-  const total = filtered.reduce((s, n) => s + (Number(n.amount) || 0), 0);
+  const sorted = [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const total = items.reduce((s, n) => s + (Number(n.amount) || 0), 0);
 
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <FYSelect value={fyFilter} onChange={setFyFilter} fys={availableFYs} style={{ width: "auto" }} />
-      </div>
-
       <div style={{ ...styles.card, borderColor: accentColor }}>
-        <div style={{ fontSize: 12, color: colors.textMuted }}>Total {fyFilter && `(${fyFilter})`}</div>
+        <div style={{ fontSize: 12, color: colors.textMuted }}>Total</div>
         <div style={{ fontSize: 20, fontWeight: 800, color: accentColor }}>{formatINR(total)}</div>
       </div>
       {sorted.length === 0 && (
