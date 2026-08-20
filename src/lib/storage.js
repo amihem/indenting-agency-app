@@ -65,6 +65,44 @@ export function formatBalance(n) {
 
 export const ROLL_LENGTH_METERS = 130;
 
+// Every Collection (payment) gets a sequential, permanent ID like PMT-0001 —
+// shown on screen, in WhatsApp shares, and on PDF exports so a specific
+// payment can always be pointed to unambiguously.
+export function nextPaymentId(collections) {
+  let maxNum = 0;
+  (collections || []).forEach((c) => {
+    const m = c.paymentId && /PMT-(\d+)/.exec(c.paymentId);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+  });
+  return `PMT-${String(maxNum + 1).padStart(4, "0")}`;
+}
+
+// One-time migration: backfills a Payment ID onto any collection that
+// doesn't have one yet (older payments recorded before this feature existed),
+// numbering them in date order so the oldest payment becomes PMT-0001.
+// Returns the same array unchanged if nothing needed backfilling.
+export function backfillPaymentIds(collections) {
+  const missing = (collections || [])
+    .map((c, idx) => ({ c, idx }))
+    .filter((x) => !x.c.paymentId)
+    .sort((a, b) => new Date(a.c.date) - new Date(b.c.date));
+
+  if (missing.length === 0) return collections;
+
+  let maxNum = 0;
+  collections.forEach((c) => {
+    const m = c.paymentId && /PMT-(\d+)/.exec(c.paymentId);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+  });
+
+  const result = [...collections];
+  missing.forEach(({ idx }) => {
+    maxNum += 1;
+    result[idx] = { ...result[idx], paymentId: `PMT-${String(maxNum).padStart(4, "0")}` };
+  });
+  return result;
+}
+
 export function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);

@@ -62,6 +62,7 @@ export function shareCollection(collection, buyer) {
 
   let text =
     `*Payment Received Confirmation*\n` +
+    (collection.paymentId ? `Payment ID: ${collection.paymentId}\n` : "") +
     `Date: ${formatDate(collection.date)}\n` +
     `From: ${buyer?.name || "—"}\n` +
     `Mode: ${collection.mode}${collection.reference ? " · Ref: " + collection.reference : ""}\n` +
