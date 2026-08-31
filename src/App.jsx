@@ -214,6 +214,32 @@ function MainApp({ session }) {
   const updateBuyer = (id, changes) => setData((d) => ({ ...d, buyers: d.buyers.map((b) => (b.id === id ? { ...b, ...changes } : b)) }));
   const deleteBuyer = (id) => setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.id !== id) }));
 
+  // Merges a duplicate Buyer into the one being kept: every Indent,
+  // Collection, Debit Note, and Credit Note that pointed at the duplicate
+  // now points at the kept record, then the duplicate is removed.
+  const mergeBuyers = (keepId, mergeId) => {
+    if (keepId === mergeId) return;
+    setData((d) => ({
+      ...d,
+      buyers: d.buyers.filter((b) => b.id !== mergeId),
+      indents: d.indents.map((i) => (i.buyerId === mergeId ? { ...i, buyerId: keepId } : i)),
+      collections: d.collections.map((c) => (c.buyerId === mergeId ? { ...c, buyerId: keepId } : c)),
+      debitNotes: d.debitNotes.map((n) => (n.buyerId === mergeId ? { ...n, buyerId: keepId } : n)),
+      creditNotes: d.creditNotes.map((n) => (n.buyerId === mergeId ? { ...n, buyerId: keepId } : n)),
+    }));
+  };
+
+  // Same idea for a duplicate Mill: reassign every Indent that pointed at
+  // the duplicate, then remove it.
+  const mergeMills = (keepId, mergeId) => {
+    if (keepId === mergeId) return;
+    setData((d) => ({
+      ...d,
+      mills: d.mills.filter((m) => m.id !== mergeId),
+      indents: d.indents.map((i) => (i.millId === mergeId ? { ...i, millId: keepId } : i)),
+    }));
+  };
+
   const addProduct = (product) => {
     const { gsm, oz } = calcGsmAndOz(product.weightGLM, product.width);
     setData((d) => ({ ...d, products: [...d.products, { id: uid(), ...product, gsm, oz }] }));
@@ -537,6 +563,8 @@ function MainApp({ session }) {
               importDebitNotesBulk={importDebitNotesBulk}
               importCreditNotesBulk={importCreditNotesBulk}
               importPayments={importPayments}
+              mergeBuyers={mergeBuyers}
+              mergeMills={mergeMills}
             />
           </div>
         </div>
