@@ -150,31 +150,86 @@ export function getDashboardSummary(data) {
     invoiceWithStatus(inv, data?.collections)
   );
 
-  return invoices.reduce(
+  const base = invoices.reduce(
     (acc, inv) => {
       acc.totalSale += inv.value;
       acc.totalPaid += inv.paidTotal;
-      acc.outstanding += inv.balance;
       acc.totalCommissionRealized += inv.commissionRealized;
       acc.totalCommissionAccrued += inv.commissionAccrued;
       return acc;
     },
-    {
-      totalSale: 0,
-      totalPaid: 0,
-      outstanding: 0,
-      totalCommissionRealized: 0,
-      totalCommissionAccrued: 0,
-    }
+    { totalSale: 0, totalPaid: 0, totalCommissionRealized: 0, totalCommissionAccrued: 0 }
   );
+
+  // Outstanding must reconcile with the Ledger/Outstanding tab — so it's
+  // computed the same way (net of Debit/Credit Notes), not just raw invoice balances.
+  const maxCreditDays = data?.settings?.cdPolicy?.maxCreditDays || 120;
+  let outstanding = 0;
+  let overdueOutstanding = 0;
+  (data?.buyers || []).forEach((buyer) => {
+    const rows = buyerOutstandingInvoices(buyer.id, data?.indents, data?.mills, data?.collections, data?.debitNotes, data?.creditNotes);
+    rows.forEach((r) => {
+      outstanding += r.balance;
+      if (r.days > maxCreditDays) overdueOutstanding += r.balance;
+    });
+  });
+
+  const pendingDispatchValue = (data?.indents || []).reduce(
+    (s, i) => s + pendingQty(i) * (Number(i.rate) || 0),
+    0
+  );
+
+  return { ...base, outstanding, overdueOutstanding, pendingDispatchValue };
 }
 
-/* ---------- Buyer outstanding (invoice-wise) ---------- */
-export function buyerOutstandingInvoices(buyerId, indents, mills, collections) {
-  const invoices = computeInvoices(indents, mills).filter((i) => i.buyerId === buyerId);
-  return invoices
+/* ---------- Buyer outstanding (invoice-wise) ----------
+   IMPORTANT: this must reconcile exactly with the Ledger's running balance.
+   Debit/Credit Notes aren't tied to a specific mill invoice, so:
+   - Credit Notes are applied FIFO against the oldest outstanding invoice
+     balances first (same principle as a payment reducing old dues first).
+   - Debit Notes add to what the buyer owes; since they don't belong to any
+     one invoice, they're shown as their own dated rows.
+------------------------------------------------------------------------ */
+export function buyerOutstandingInvoices(buyerId, indents, mills, collections, debitNotes = [], creditNotes = []) {
+  const invoices = computeInvoices(indents, mills)
+    .filter((i) => i.buyerId === buyerId)
     .map((inv) => invoiceWithStatus(inv, collections))
-    .filter((inv) => inv.balance > 0.5)
+    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+
+  const totalCreditNotes = (creditNotes || [])
+    .filter((n) => n.buyerId === buyerId)
+    .reduce((s, n) => s + (Number(n.amount) || 0), 0);
+
+  let creditPool = totalCreditNotes;
+  const withCreditNotesApplied = invoices.map((inv) => {
+    const applied = Math.min(creditPool, inv.balance);
+    creditPool -= applied;
+    return { ...inv, creditNoteApplied: applied, balance: inv.balance - applied };
+  });
+
+  const invoiceRows = withCreditNotesApplied.filter((inv) => inv.balance > 0.5);
+
+  const debitNoteRows = (debitNotes || [])
+    .filter((n) => n.buyerId === buyerId)
+    .map((n) => ({
+      key: `dn-${n.id}`,
+      isDebitNote: true,
+      dispatchId: null,
+      indentId: null,
+      indentNumber: "",
+      invoiceDate: n.date,
+      invoiceNo: `Debit Note${n.reason ? " — " + n.reason : ""}`,
+      value: Number(n.amount) || 0,
+      paidTotal: 0,
+      balance: Number(n.amount) || 0,
+      commission: 0,
+      commissionRealized: 0,
+      commissionAccrued: 0,
+      days: ageDays(n.date),
+    }));
+
+  return [...invoiceRows, ...debitNoteRows]
+    .filter((r) => r.balance > 0.5)
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 }
 
@@ -190,10 +245,10 @@ export function ageBucket(days) {
   return "120+";
 }
 
-export function customerWiseAgeing(buyers, indents, mills, collections) {
+export function customerWiseAgeing(buyers, indents, mills, collections, debitNotes = [], creditNotes = []) {
   return buyers
     .map((buyer) => {
-      const invoices = buyerOutstandingInvoices(buyer.id, indents, mills, collections);
+      const invoices = buyerOutstandingInvoices(buyer.id, indents, mills, collections, debitNotes, creditNotes);
       const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "91-120": 0, "120+": 0 };
       invoices.forEach((inv) => {
         buckets[ageBucket(inv.days)] += inv.balance;
@@ -205,33 +260,37 @@ export function customerWiseAgeing(buyers, indents, mills, collections) {
 }
 
 /* ---------- Mill-wise pending amount (across all buyers) ---------- */
-export function millOutstandingSummary(indents, mills, collections) {
-  const invoices = computeInvoices(indents, mills);
+export function millOutstandingSummary(indents, mills, collections, buyers = [], debitNotes = [], creditNotes = []) {
   const byMill = {};
-  invoices.forEach((inv) => {
-    const withStatus = invoiceWithStatus(inv, collections);
-    if (withStatus.balance > 0.5) {
-      byMill[inv.millId] = (byMill[inv.millId] || 0) + withStatus.balance;
-    }
+  buyers.forEach((buyer) => {
+    buyerOutstandingInvoices(buyer.id, indents, mills, collections, debitNotes, creditNotes)
+      .filter((inv) => !inv.isDebitNote) // a buyer's Debit Note isn't owed to any mill
+      .forEach((inv) => {
+        byMill[inv.millId] = (byMill[inv.millId] || 0) + inv.balance;
+      });
   });
   return byMill; // { millId: totalPendingAmount }
 }
 
 /* ---------- Mill-wise pending, broken down date/invoice/party-wise ---------- */
-export function millOutstandingInvoices(millId, indents, mills, collections) {
-  const invoices = computeInvoices(indents, mills).filter((i) => i.millId === millId);
-  return invoices
-    .map((inv) => invoiceWithStatus(inv, collections))
-    .filter((inv) => inv.balance > 0.5)
-    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+export function millOutstandingInvoices(millId, indents, mills, collections, buyers = [], debitNotes = [], creditNotes = []) {
+  const rows = [];
+  buyers.forEach((buyer) => {
+    buyerOutstandingInvoices(buyer.id, indents, mills, collections, debitNotes, creditNotes)
+      .filter((inv) => !inv.isDebitNote && inv.millId === millId)
+      .forEach((inv) => rows.push(inv));
+  });
+  return rows.sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 }
 
 /* ---------- Pending invoices for a buyer, for the Collection-entry screen ---------- */
-export function pendingInvoicesForCollectionEntry(buyerId, indents, mills, collections, cdPolicy) {
-  return buyerOutstandingInvoices(buyerId, indents, mills, collections).map((inv) => ({
-    ...inv,
-    suggestedCdPct: calcCdPct(inv.days, cdPolicy),
-  }));
+export function pendingInvoicesForCollectionEntry(buyerId, indents, mills, collections, cdPolicy, debitNotes = [], creditNotes = []) {
+  return buyerOutstandingInvoices(buyerId, indents, mills, collections, debitNotes, creditNotes)
+    .filter((inv) => !inv.isDebitNote) // debit notes aren't a mill invoice — nothing to allocate a payment against
+    .map((inv) => ({
+      ...inv,
+      suggestedCdPct: calcCdPct(inv.days, cdPolicy),
+    }));
 }
 
 /* ---------- Account Ledger (Buyer or Mill) ----------
