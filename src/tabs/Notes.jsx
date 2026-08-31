@@ -14,7 +14,7 @@ function NoteForm({ data, onAdd, label }) {
   // same logic used when recording a Collection, so linking a Debit/Credit
   // Note to "the invoice it relates to" works the same way everywhere.
   const pendingInvoices = form.buyerId
-    ? buyerOutstandingInvoices(form.buyerId, data.indents, data.mills, data.collections)
+    ? buyerOutstandingInvoices(form.buyerId, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes).filter((i) => !i.isDebitNote)
     : [];
 
   function submit() {

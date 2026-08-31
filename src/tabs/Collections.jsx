@@ -307,7 +307,7 @@ function CollectionForm({ data, editingCollection, onSave }) {
     : data.collections;
 
   const pendingInvoices = buyerId
-    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, collectionsForBalance, cdPolicy)
+    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, collectionsForBalance, cdPolicy, data.debitNotes, data.creditNotes)
     : [];
 
   function toggleInvoice(inv) {

@@ -21,13 +21,13 @@ export default function OutstandingTab({ data }) {
   const perBuyer = buyersToShow
     .map((buyer) => ({
       buyer,
-      invoices: buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
+      invoices: buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
     }))
     .filter((x) => x.invoices.length > 0);
 
   const grandTotal = roundRupee(perBuyer.reduce((s, x) => s + x.invoices.reduce((s2, i) => s2 + i.balance, 0), 0));
 
-  const millPending = millOutstandingSummary(data.indents, data.mills, data.collections);
+  const millPending = millOutstandingSummary(data.indents, data.mills, data.collections, data.buyers, data.debitNotes, data.creditNotes);
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
   function exportCustomerPDF() {
@@ -188,7 +188,7 @@ export default function OutstandingTab({ data }) {
           {(millFilter ? data.mills.filter((m) => m.id === millFilter) : data.mills)
             .map((mill) => ({
               mill,
-              invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
+              invoices: millOutstandingInvoices(mill.id, data.indents, data.mills, data.collections, data.buyers, data.debitNotes, data.creditNotes).filter((i) => matchesFY(i.invoiceDate, fyFilter)),
             }))
             .filter((x) => x.invoices.length > 0)
             .map(({ mill, invoices }) => {

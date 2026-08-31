@@ -134,7 +134,7 @@ export default function ReportsTab({ data, initialSection }) {
     (c) => (c.allocations || []).reduce((s, a) => s + (Number(a.cdAmount) || 0), 0)
   );
 
-  const ageingRows = customerWiseAgeing(data.buyers, data.indents, data.mills, data.collections);
+  const ageingRows = customerWiseAgeing(data.buyers, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes);
   const ageingSummary = { "0-30": 0, "31-60": 0, "61-90": 0, "91-120": 0, "120+": 0 };
   ageingRows.forEach((r) => AGEING_BUCKETS.forEach((b) => (ageingSummary[b] += r.buckets[b])));
   const ageingGrandTotal = Object.values(ageingSummary).reduce((s, v) => s + v, 0);

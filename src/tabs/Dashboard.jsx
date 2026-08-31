@@ -29,7 +29,7 @@ export default function Dashboard({ data, setTab, goToReports }) {
 
   // Calculate Top Outstanding
   const buyersWithOutstanding = data.buyers.map((buyer) => {
-    const invoices = buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections);
+    const invoices = buyerOutstandingInvoices(buyer.id, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes);
     const balance = invoices.reduce((s, i) => s + i.balance, 0);
     return { name: buyer.name, balance };
   }).filter(b => b.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 5);
