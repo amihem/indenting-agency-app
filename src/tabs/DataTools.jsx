@@ -3,6 +3,7 @@ import React, { useState, useRef } from "react";
 import { styles, colors } from "../styles";
 import { downloadBackup, readBackupFile } from "../lib/backup";
 import { parseExcelFile, mapMillRow, mapBuyerRow, mapProductRow, mapIndentRow, mapDispatchRow, mapDebitNoteRow, mapCreditNoteRow, mapPaymentRow } from "../lib/excelImport";
+import SearchableSelect from "../components/SearchableSelect";
 
 export default function DataTools({
   data,
@@ -15,6 +16,8 @@ export default function DataTools({
   importDebitNotesBulk,
   importCreditNotesBulk,
   importPayments,
+  mergeBuyers,
+  mergeMills,
 }) {
   return (
     <div>
@@ -22,6 +25,16 @@ export default function DataTools({
 
       <BackupSection data={data} />
       <RestoreSection restoreData={restoreData} />
+
+      <div style={{ ...styles.h2, marginTop: 24 }}>Merge Duplicate Records</div>
+      <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
+        If the same Buyer or Mill got created twice (e.g. "Nishika Trading Co" vs
+        "Nishika Trading Company" from a bulk import), merge them here — every
+        Indent, Collection, Debit/Credit Note tied to the duplicate moves onto
+        the one you keep, then the duplicate is removed.
+      </p>
+      <MergeSection title="Merge Buyers" items={data.buyers} onMerge={mergeBuyers} />
+      <MergeSection title="Merge Mills" items={data.mills} onMerge={mergeMills} />
 
       <div style={{ ...styles.h2, marginTop: 24 }}>Import Masters from Excel</div>
       <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
@@ -239,6 +252,59 @@ function ImportSection({ title, expectedColumns, mapRow, onImport, renderPreview
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------------- Merge Duplicate Records ---------------- */
+function MergeSection({ title, items, onMerge }) {
+  const [keepId, setKeepId] = useState("");
+  const [mergeId, setMergeId] = useState("");
+
+  const keepName = items.find((i) => i.id === keepId)?.name || "";
+  const mergeName = items.find((i) => i.id === mergeId)?.name || "";
+  const canMerge = keepId && mergeId && keepId !== mergeId;
+
+  function handleMerge() {
+    if (!canMerge) return;
+    const ok = window.confirm(
+      `⚠️ Merge "${mergeName}" into "${keepName}"?\n\n` +
+        `Every record currently linked to "${mergeName}" will be moved onto "${keepName}", ` +
+        `and "${mergeName}" will then be permanently deleted. This cannot be undone.`
+    );
+    if (ok) {
+      onMerge(keepId, mergeId);
+      setKeepId("");
+      setMergeId("");
+    }
+  }
+
+  return (
+    <div style={{ ...styles.card, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{title}</div>
+      <div style={styles.row2}>
+        <div>
+          <label style={styles.label}>Keep this one</label>
+          <SearchableSelect
+            value={keepId}
+            onChange={setKeepId}
+            options={items.map((i) => ({ id: i.id, label: i.name }))}
+            placeholder="Select record to keep"
+          />
+        </div>
+        <div>
+          <label style={styles.label}>Merge this duplicate into it</label>
+          <SearchableSelect
+            value={mergeId}
+            onChange={setMergeId}
+            options={items.filter((i) => i.id !== keepId).map((i) => ({ id: i.id, label: i.name }))}
+            placeholder="Select duplicate to merge"
+          />
+        </div>
+      </div>
+      <button style={styles.btnDanger} disabled={!canMerge} onClick={handleMerge}>
+        Merge "{mergeName || "..."}" into "{keepName || "..."}"
+      </button>
     </div>
   );
 }
