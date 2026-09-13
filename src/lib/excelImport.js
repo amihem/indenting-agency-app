@@ -144,6 +144,7 @@ export function mapPaymentRow(row) {
     mode: String(pick(row, ["Mode"])).trim() || "NEFT",
     reference: String(pick(row, ["Reference"])).trim(),
     againstInvoiceNo: String(pick(row, ["Against Invoice No", "Invoice No"])).trim(),
+    indentNumber: String(pick(row, ["Against Indent No", "Indent No"])).trim(),
     cdPct: Number(pick(row, ["CD %", "CD Pct"])) || 0,
     cdAmount: cdAmountRaw !== "" ? Number(cdAmountRaw) : null,
   };

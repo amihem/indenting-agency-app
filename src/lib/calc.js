@@ -366,3 +366,31 @@ export function ledgerEntries({ entityType, entityId, indents, mills, collection
     return { ...e, balanceAmt: e.debit - e.credit, runningBalance: running };
   });
 }
+
+/* ---------- Data Health Check: duplicate Mill Invoice Numbers ----------
+   The same buyer's mill sometimes reuses an invoice number across two
+   separate dispatches. When that happens, a payment recorded "against
+   Invoice No. X" is ambiguous — historically this caused all money to be
+   misattributed to just one of the two dispatches, leaving the other one
+   looking unpaid even though it may have genuinely been settled. This
+   surfaces every such case so it can be checked and corrected in Collections.
+------------------------------------------------------------------------- */
+export function findDuplicateInvoiceNumbers(indents) {
+  const groups = {};
+  (indents || []).forEach((indent) => {
+    (indent.dispatches || []).forEach((d) => {
+      const invNo = (d.invoiceNumber || "").trim();
+      if (!invNo) return;
+      const key = `${indent.buyerId}::${invNo.toLowerCase()}`;
+      if (!groups[key]) groups[key] = { buyerId: indent.buyerId, invoiceNo: invNo, entries: [] };
+      groups[key].entries.push({
+        dispatchId: d.id,
+        indentNumber: indent.indentNumber,
+        date: d.date,
+        qty: d.qty,
+        rate: indent.rate,
+      });
+    });
+  });
+  return Object.values(groups).filter((g) => g.entries.length > 1);
+}

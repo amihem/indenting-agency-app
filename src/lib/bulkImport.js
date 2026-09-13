@@ -148,9 +148,31 @@ export function importPaymentsIntoData(data, rows) {
 
     let target = null;
     if (r.againstInvoiceNo) {
-      target = invoices.find(
+      const candidates = invoices.filter(
         (inv) => (inv.invoiceNo || inv.indentNumber || "").trim().toLowerCase() === r.againstInvoiceNo.trim().toLowerCase()
       );
+      if (candidates.length === 1) {
+        target = candidates[0];
+      } else if (candidates.length > 1) {
+        // Same Invoice No. appears on more than one dispatch (mills sometimes
+        // reuse numbers) — picking the first one blindly has previously
+        // misattributed payments. Prefer an Indent No. match if the row has
+        // one, else the candidate whose balance most closely matches the
+        // payment amount, and always warn so it can be double-checked.
+        if (r.indentNumber) {
+          target = candidates.find(
+            (inv) => (inv.indentNumber || "").trim().toLowerCase() === r.indentNumber.trim().toLowerCase()
+          );
+        }
+        if (!target) {
+          target = candidates.reduce((best, inv) =>
+            Math.abs(inv.balance - r.amount) < Math.abs(best.balance - r.amount) ? inv : best
+          );
+          warnings.push(
+            `Row ${idx + 1}: Invoice No. "${r.againstInvoiceNo}" appears on ${candidates.length} separate dispatches for "${r.buyerName}" — matched to the one closest to ₹${r.amount} (dated ${target.invoiceDate}). Please verify this in the Collections tab.`
+          );
+        }
+      }
     }
     if (!target) target = invoices[0]; // FIFO fallback — oldest pending invoice
 
