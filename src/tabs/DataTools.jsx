@@ -4,6 +4,8 @@ import { styles, colors } from "../styles";
 import { downloadBackup, readBackupFile } from "../lib/backup";
 import { parseExcelFile, mapMillRow, mapBuyerRow, mapProductRow, mapIndentRow, mapDispatchRow, mapDebitNoteRow, mapCreditNoteRow, mapPaymentRow } from "../lib/excelImport";
 import SearchableSelect from "../components/SearchableSelect";
+import { findDuplicateInvoiceNumbers } from "../lib/calc";
+import { formatINR, formatDate } from "../lib/storage";
 
 export default function DataTools({
   data,
@@ -25,6 +27,16 @@ export default function DataTools({
 
       <BackupSection data={data} />
       <RestoreSection restoreData={restoreData} />
+
+      <div style={{ ...styles.h2, marginTop: 24 }}>Data Health Check</div>
+      <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
+        Flags Mill Invoice Numbers that were reused across more than one
+        dispatch for the same buyer. When that happens, a payment recorded
+        "against" that invoice number is ambiguous — verify each case below
+        in the Collections tab to make sure the money was applied to the
+        correct dispatch.
+      </p>
+      <DuplicateInvoiceNumberCheck data={data} />
 
       <div style={{ ...styles.h2, marginTop: 24 }}>Merge Duplicate Records</div>
       <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, marginBottom: 16 }}>
@@ -305,6 +317,40 @@ function MergeSection({ title, items, onMerge }) {
       <button style={styles.btnDanger} disabled={!canMerge} onClick={handleMerge}>
         Merge "{mergeName || "..."}" into "{keepName || "..."}"
       </button>
+    </div>
+  );
+}
+
+/* ---------------- Data Health Check: duplicate Invoice Numbers ---------------- */
+function DuplicateInvoiceNumberCheck({ data }) {
+  const buyerName = (id) => data.buyers.find((b) => b.id === id)?.name || "—";
+  const groups = findDuplicateInvoiceNumbers(data.indents);
+
+  if (groups.length === 0) {
+    return (
+      <div style={{ ...styles.card, color: colors.success, textAlign: "center" }}>
+        ✅ No duplicate invoice numbers found — every Mill Invoice Number is unique per buyer.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...styles.card, borderColor: colors.danger }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: colors.danger, marginBottom: 10 }}>
+        ⚠️ {groups.length} duplicate Invoice Number case(s) found
+      </div>
+      {groups.map((g, i) => (
+        <div key={i} style={{ borderTop: i > 0 ? `1px dashed ${colors.border}` : "none", paddingTop: i > 0 ? 10 : 0, marginTop: i > 0 ? 10 : 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {buyerName(g.buyerId)} — Invoice No "{g.invoiceNo}" ({g.entries.length} dispatches)
+          </div>
+          {g.entries.map((e, j) => (
+            <div key={j} style={{ fontSize: 12, color: colors.textMuted, marginLeft: 12 }}>
+              Indent {e.indentNumber} · {formatDate(e.date)} · Qty {e.qty} · Value {formatINR((Number(e.qty) || 0) * (Number(e.rate) || 0))}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
