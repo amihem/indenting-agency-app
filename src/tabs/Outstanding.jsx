@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { styles, colors } from "../styles";
 import { formatINR, formatDate } from "../lib/storage";
-import { buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices, roundRupee, computeInvoices } from "../lib/calc";
+import { buyerReconciliation, buyerOutstandingInvoices, millOutstandingSummary, millOutstandingInvoices, roundRupee, computeInvoices } from "../lib/calc";
 import { shareOutstanding } from "../lib/whatsapp";
 import { printReport } from "../lib/print";
 import { collectFYs, matchesFY, FYSelect } from "../lib/fy.jsx";
@@ -116,9 +116,15 @@ export default function OutstandingTab({ data }) {
 
           {perBuyer.map(({ buyer, invoices }) => {
             const partyTotal = roundRupee(invoices.reduce((s, i) => s + i.balance, 0));
+            const rec = buyerReconciliation(buyer.id, data);
             return (
               <div key={buyer.id} style={styles.card}>
                 <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Party Name: {buyer.name}</div>
+                {rec.diff !== 0 && (
+                  <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 8 }}>
+                    ⚠ Ledger balance ({formatINR(rec.ledger)}) se mismatch: {formatINR(rec.diff)}. Collections/notes check karein.
+                  </div>
+                )}
                 <div style={{ overflowX: "auto" }}>
                   <table style={styles.table}>
                     <thead>
