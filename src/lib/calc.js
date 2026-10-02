@@ -200,7 +200,14 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections, d
     .filter((n) => n.buyerId === buyerId)
     .reduce((s, n) => s + (Number(n.amount) || 0), 0);
 
-  let creditPool = totalCreditNotes;
+  // FIFO POOL = Credit Notes + any payment that exceeded its invoice
+  // (e.g. collection allocated to the wrong / already-settled invoice).
+  // Previously that excess was silently thrown away (balance clamped to 0),
+  // which made Outstanding differ from the Ledger. Now it flows to the
+  // oldest open invoices, exactly like a normal FIFO payment.
+  const overPaid = invoices.reduce((s, inv) => s + Math.max(inv.paidTotal - inv.value, 0), 0);
+
+  let creditPool = totalCreditNotes + overPaid;
   const withCreditNotesApplied = invoices.map((inv) => {
     const applied = Math.min(creditPool, inv.balance);
     creditPool -= applied;
@@ -393,4 +400,24 @@ export function findDuplicateInvoiceNumbers(indents) {
     });
   });
   return Object.values(groups).filter((g) => g.entries.length > 1);
+}
+
+
+/* ---------- Reconciliation: Outstanding vs Ledger (single source of truth) ----------
+   Returns the buyer's outstanding (open invoices + debit notes), any advance
+   left over after FIFO (money received beyond all dues), and the Ledger's
+   closing balance. `diff` must always be 0 — the UI shows a warning if not. */
+export function buyerReconciliation(buyerId, data) {
+  const rows = buyerOutstandingInvoices(buyerId, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes);
+  const outstanding = rows.reduce((s, r) => s + r.balance, 0);
+
+  const invoices = computeInvoices(data.indents, data.mills)
+    .filter((i) => i.buyerId === buyerId)
+    .map((inv) => invoiceWithStatus(inv, data.collections));
+  const sum = (arr) => (arr || []).filter((n) => n.buyerId === buyerId).reduce((s, n) => s + (Number(n.amount) || 0), 0);
+  const totalDue = invoices.reduce((s, i) => s + i.value, 0) + sum(data.debitNotes);
+  const totalPaid = invoices.reduce((s, i) => s + i.paidTotal, 0) + sum(data.creditNotes);
+  const net = totalDue - totalPaid; // = Ledger closing balance (Dr +, Cr -)
+  const advance = Math.max(outstanding - net, 0); // money left after all dues cleared
+  return { outstanding, advance, ledger: net, diff: Math.round(outstanding - advance - net) };
 }
