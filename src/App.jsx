@@ -14,6 +14,7 @@ import DispatchTab from "./tabs/Dispatch";
 import CollectionsTab from "./tabs/Collections";
 import { DebitNoteTab, CreditNoteTab } from "./tabs/Notes";
 import OutstandingTab from "./tabs/Outstanding";
+import BulkAdjustTab from "./tabs/BulkAdjust";
 import ReportsTab from "./tabs/Reports";
 import LedgerTab from "./tabs/Ledger";
 import MastersTab from "./tabs/Masters";
@@ -36,6 +37,7 @@ const TABS = [
   ["debitnotes", "Debit Note"],
   ["creditnotes", "Credit Note"],
   ["outstanding", "Outstanding"],
+  ["bulkadjust", "Bulk Adjust"],
   ["reports", "Reports"],
   ["ledger", "Ledger"],
   ["masters", "Masters"],
@@ -368,19 +370,59 @@ function MainApp({ session }) {
     }));
 
   /* ---------- Collections & Notes ---------- */
+  // writeOffs: leftover balances closed with a Credit Note while saving a payment.
+  // Each note is tagged with collectionId + targetKey so it hits that exact
+  // invoice and is replaced/removed together with the collection.
+  const notesFromWriteOffs = (collectionId, c, writeOffs) =>
+    (writeOffs || []).map((w) => ({
+      id: uid(),
+      buyerId: c.buyerId,
+      date: c.date,
+      amount: Math.round(w.amount),
+      reason: w.reason || "Short payment",
+      invoiceNo: w.invoiceNo || null,
+      indentNumber: w.indentNumber || null,
+      targetKey: w.dispatchId,
+      collectionId,
+      autoAdjust: true,
+    }));
   const addCollection = (collection) =>
+    setData((d) => {
+      const { writeOffs, ...rest } = collection;
+      const id = uid();
+      return {
+        ...d,
+        collections: [{ id, paymentId: nextPaymentId(d.collections), ...rest }, ...d.collections],
+        creditNotes: [...notesFromWriteOffs(id, rest, writeOffs), ...d.creditNotes],
+      };
+    });
+  const updateCollection = (id, changes) =>
+    setData((d) => {
+      const { writeOffs, ...rest } = changes;
+      const old = d.collections.find((c) => c.id === id) || {};
+      const merged = { ...old, ...rest };
+      return {
+        ...d,
+        collections: d.collections.map((c) => (c.id === id ? merged : c)),
+        creditNotes:
+          writeOffs === undefined
+            ? d.creditNotes
+            : [...notesFromWriteOffs(id, merged, writeOffs), ...d.creditNotes.filter((n) => n.collectionId !== id)],
+      };
+    });
+  const deleteCollection = (id) =>
     setData((d) => ({
       ...d,
-      collections: [{ id: uid(), paymentId: nextPaymentId(d.collections), ...collection }, ...d.collections],
+      collections: d.collections.filter((c) => c.id !== id),
+      creditNotes: d.creditNotes.filter((n) => n.collectionId !== id),
     }));
-  const updateCollection = (id, changes) =>
-    setData((d) => ({ ...d, collections: d.collections.map((c) => (c.id === id ? { ...c, ...changes } : c)) }));
-  const deleteCollection = (id) => setData((d) => ({ ...d, collections: d.collections.filter((c) => c.id !== id) }));
 
   const addDebitNote = (note) => setData((d) => ({ ...d, debitNotes: [{ id: uid(), ...note }, ...d.debitNotes] }));
   const deleteDebitNote = (id) => setData((d) => ({ ...d, debitNotes: d.debitNotes.filter((n) => n.id !== id) }));
 
   const addCreditNote = (note) => setData((d) => ({ ...d, creditNotes: [{ id: uid(), ...note }, ...d.creditNotes] }));
+  const addCreditNotesBulk = (notes) =>
+    setData((d) => ({ ...d, creditNotes: [...notes.map((n) => ({ id: uid(), ...n })), ...d.creditNotes] }));
   const deleteCreditNote = (id) => setData((d) => ({ ...d, creditNotes: d.creditNotes.filter((n) => n.id !== id) }));
 
   const syncDot = {
@@ -525,6 +567,7 @@ function MainApp({ session }) {
         {tab === "debitnotes" && <DebitNoteTab data={data} addDebitNote={addDebitNote} deleteDebitNote={deleteDebitNote} />}
         {tab === "creditnotes" && <CreditNoteTab data={data} addCreditNote={addCreditNote} deleteCreditNote={deleteCreditNote} />}
         {tab === "outstanding" && <OutstandingTab data={data} />}
+        {tab === "bulkadjust" && <BulkAdjustTab data={data} addCreditNotesBulk={addCreditNotesBulk} />}
         {tab === "reports" && <ReportsTab data={data} initialSection={reportSection} />}
         {tab === "ledger" && <LedgerTab data={data} />}
         {tab === "masters" && (
