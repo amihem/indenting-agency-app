@@ -196,22 +196,40 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections, d
     .map((inv) => invoiceWithStatus(inv, collections))
     .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
-  const totalCreditNotes = (creditNotes || [])
-    .filter((n) => n.buyerId === buyerId)
-    .reduce((s, n) => s + (Number(n.amount) || 0), 0);
+  const buyerCNs = (creditNotes || []).filter((n) => n.buyerId === buyerId);
 
-  // FIFO POOL = Credit Notes + any payment that exceeded its invoice
-  // (e.g. collection allocated to the wrong / already-settled invoice).
-  // Previously that excess was silently thrown away (balance clamped to 0),
-  // which made Outstanding differ from the Ledger. Now it flows to the
-  // oldest open invoices, exactly like a normal FIFO payment.
+  // Credit Notes that name a specific row (targetKey = invoice key or "dn-<id>",
+  // used by Bulk Adjust: CD settlement / small-balance write-off) are applied
+  // to THAT row first. Anything left over joins the FIFO pool.
+  const targeted = {};
+  let looseCreditNotes = 0;
+  buyerCNs.forEach((n) => {
+    const amt = Number(n.amount) || 0;
+    if (n.targetKey) targeted[n.targetKey] = (targeted[n.targetKey] || 0) + amt;
+    else looseCreditNotes += amt;
+  });
+  const dnKeys = new Set((debitNotes || []).filter((n) => n.buyerId === buyerId).map((n) => `dn-${n.id}`));
+  const invKeys = new Set(invoices.map((i) => i.key));
+  Object.keys(targeted).forEach((k) => {
+    if (!invKeys.has(k) && !dnKeys.has(k)) { looseCreditNotes += targeted[k]; delete targeted[k]; } // stale target -> treat as general
+  });
+
+  let targetedLeftover = 0;
+  const invoicesT = invoices.map((inv) => {
+    const t = Math.min(targeted[inv.key] || 0, inv.balance);
+    targetedLeftover += (targeted[inv.key] || 0) - t;
+    return { ...inv, balance: inv.balance - t, targetedCredit: t };
+  });
+
+  // FIFO POOL = general Credit Notes + any payment that exceeded its invoice
+  // (excess is no longer thrown away) + unused targeted amounts.
   const overPaid = invoices.reduce((s, inv) => s + Math.max(inv.paidTotal - inv.value, 0), 0);
 
-  let creditPool = totalCreditNotes + overPaid;
-  const withCreditNotesApplied = invoices.map((inv) => {
+  let creditPool = looseCreditNotes + overPaid + targetedLeftover;
+  const withCreditNotesApplied = invoicesT.map((inv) => {
     const applied = Math.min(creditPool, inv.balance);
     creditPool -= applied;
-    return { ...inv, creditNoteApplied: applied, balance: inv.balance - applied };
+    return { ...inv, creditNoteApplied: applied + inv.targetedCredit, balance: inv.balance - applied };
   });
 
   const invoiceRows = withCreditNotesApplied.filter((inv) => inv.balance > 0.5);
@@ -228,7 +246,7 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections, d
       invoiceNo: `Debit Note${n.reason ? " — " + n.reason : ""}`,
       value: Number(n.amount) || 0,
       paidTotal: 0,
-      balance: Number(n.amount) || 0,
+      balance: Math.max((Number(n.amount) || 0) - (targeted[`dn-${n.id}`] || 0), 0),
       commission: 0,
       commissionRealized: 0,
       commissionAccrued: 0,
@@ -409,15 +427,17 @@ export function findDuplicateInvoiceNumbers(indents) {
    closing balance. `diff` must always be 0 — the UI shows a warning if not. */
 export function buyerReconciliation(buyerId, data) {
   const rows = buyerOutstandingInvoices(buyerId, data.indents, data.mills, data.collections, data.debitNotes, data.creditNotes);
-  const outstanding = rows.reduce((s, r) => s + r.balance, 0);
+  const outstanding = Math.round(rows.reduce((s, r) => s + r.balance, 0));
 
-  const invoices = computeInvoices(data.indents, data.mills)
-    .filter((i) => i.buyerId === buyerId)
-    .map((inv) => invoiceWithStatus(inv, data.collections));
-  const sum = (arr) => (arr || []).filter((n) => n.buyerId === buyerId).reduce((s, n) => s + (Number(n.amount) || 0), 0);
-  const totalDue = invoices.reduce((s, i) => s + i.value, 0) + sum(data.debitNotes);
-  const totalPaid = invoices.reduce((s, i) => s + i.paidTotal, 0) + sum(data.creditNotes);
-  const net = totalDue - totalPaid; // = Ledger closing balance (Dr +, Cr -)
-  const advance = Math.max(outstanding - net, 0); // money left after all dues cleared
-  return { outstanding, advance, ledger: net, diff: Math.round(outstanding - advance - net) };
+  // Ledger closing balance, computed independently from the Ledger's own entries
+  const led = ledgerEntries({
+    entityType: "buyer", entityId: buyerId,
+    indents: data.indents, mills: data.mills, collections: data.collections,
+    debitNotes: data.debitNotes, creditNotes: data.creditNotes,
+  });
+  const ledger = Math.round(led.length ? led[led.length - 1].runningBalance : 0);
+
+  // If credits exceed all open invoices, the leftover is an advance (shown as Cr in Ledger)
+  const advance = Math.max(outstanding - ledger, 0);
+  return { outstanding, advance, ledger, diff: outstanding - advance - ledger };
 }
