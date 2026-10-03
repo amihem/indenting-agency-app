@@ -226,13 +226,6 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections, d
   const overPaid = invoices.reduce((s, inv) => s + Math.max(inv.paidTotal - inv.value, 0), 0);
 
   let creditPool = looseCreditNotes + overPaid + targetedLeftover;
-  const withCreditNotesApplied = invoicesT.map((inv) => {
-    const applied = Math.min(creditPool, inv.balance);
-    creditPool -= applied;
-    return { ...inv, creditNoteApplied: applied + inv.targetedCredit, balance: inv.balance - applied };
-  });
-
-  const invoiceRows = withCreditNotesApplied.filter((inv) => inv.balance > 0.5);
 
   const debitNoteRows = (debitNotes || [])
     .filter((n) => n.buyerId === buyerId)
@@ -253,9 +246,20 @@ export function buyerOutstandingInvoices(buyerId, indents, mills, collections, d
       days: ageDays(n.date),
     }));
 
-  return [...invoiceRows, ...debitNoteRows]
-    .filter((r) => r.balance > 0.5)
-    .sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+  // One FIFO list: invoices AND debit notes, oldest first. Any surplus credit
+  // (extra payment / unlinked Credit Note) now also clears Debit Notes such as
+  // round-off, so Outstanding = Ledger. Only credit left after EVERYTHING is
+  // cleared is a real advance.
+  const fifoRows = [...invoicesT, ...debitNoteRows].sort(
+    (a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate) || (a.isDebitNote ? 1 : 0) - (b.isDebitNote ? 1 : 0)
+  );
+  const settled = fifoRows.map((row) => {
+    const applied = Math.min(creditPool, row.balance);
+    creditPool -= applied;
+    return { ...row, creditNoteApplied: (row.targetedCredit || 0) + applied, balance: row.balance - applied };
+  });
+
+  return settled.filter((r) => r.balance > 0.5);
 }
 
 /* ---------- Ageing buckets (for Reports: Customer-wise Outstanding Ageing) ---------- */
