@@ -292,6 +292,10 @@ function CollectionForm({ data, editingCollection, onSave }) {
         invoiceNo: a.invoiceNo,
         indentNumber: a.indentNumber,
         indentId: a.indentId,
+        wo: (() => {
+          const n = (data.creditNotes || []).find((x) => x.collectionId === editingCollection.id && x.targetKey === a.dispatchId);
+          return n ? { on: true, reason: n.reason || "Short payment" } : { on: false, reason: "Short payment" };
+        })(),
       };
     });
     return init;
@@ -306,8 +310,12 @@ function CollectionForm({ data, editingCollection, onSave }) {
     ? data.collections.filter((c) => c.id !== editingCollection.id)
     : data.collections;
 
+  const creditNotesForBalance = isEditing
+    ? (data.creditNotes || []).filter((n) => n.collectionId !== editingCollection.id)
+    : data.creditNotes;
+
   const pendingInvoices = buyerId
-    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, collectionsForBalance, cdPolicy, data.debitNotes, data.creditNotes)
+    ? pendingInvoicesForCollectionEntry(buyerId, data.indents, data.mills, collectionsForBalance, cdPolicy, data.debitNotes, creditNotesForBalance)
     : [];
 
   function toggleInvoice(inv) {
@@ -327,6 +335,7 @@ function CollectionForm({ data, editingCollection, onSave }) {
           cdAmount: cdAmount,
           cdPct,
           isCustomCd: false,
+          wo: { on: false, reason: "Short payment" },
           invoiceNo: inv.invoiceNo,
           indentNumber: inv.indentNumber,
           indentId: inv.indentId,
@@ -362,13 +371,30 @@ function CollectionForm({ data, editingCollection, onSave }) {
       return { dispatchId, indentId: v.indentId, indentNumber: v.indentNumber, invoiceNo: v.invoiceNo, amount, cdPct: v.cdPct, cdAmount };
     });
 
+  function setWo(key, patch) {
+    setSelected((s) => ({ ...s, [key]: { ...s[key], wo: { ...(s[key].wo || { on: false, reason: "Short payment" }), ...patch } } }));
+  }
+
+  // Balance still left on an invoice after this payment (cash + CD)
+  const leftoverFor = (inv, sel) => Math.max(Math.round(inv.balance) - roundRupee(sel.amount) - roundRupee(sel.cdAmount), 0);
+
+  const writeOffs = [];
+  Object.entries(selected).forEach(([key, v]) => {
+    if (!v.checked || !v.wo?.on) return;
+    const inv = pendingInvoices.find((i) => i.key === key);
+    if (!inv) return;
+    const left = leftoverFor(inv, v);
+    if (left >= 1) writeOffs.push({ dispatchId: key, amount: left, reason: v.wo.reason, invoiceNo: v.invoiceNo, indentNumber: v.indentNumber });
+  });
+  const totalWriteOff = writeOffs.reduce((s, w) => s + w.amount, 0);
+
   const totalCash = allocations.reduce((s, a) => s + a.amount, 0);
   const totalCd = allocations.reduce((s, a) => s + a.cdAmount, 0);
   const canSubmit = buyerId && allocations.length > 0 && totalCash + totalCd > 0;
 
   function submit() {
     if (!canSubmit) return;
-    onSave({ buyerId, date, mode, reference, allocations });
+    onSave({ buyerId, date, mode, reference, allocations, writeOffs });
   }
 
   // Invoices already selected (e.g. from editing) but no longer in the
@@ -463,6 +489,25 @@ function CollectionForm({ data, editingCollection, onSave }) {
                     </div>
                   </div>
                 )}
+
+                {sel?.checked && leftoverFor(inv, sel) >= 1 && (
+                  <div style={{ marginTop: 8, padding: 8, borderRadius: 6, background: colors.bg }}>
+                    <div style={{ fontSize: 12, color: colors.textMuted }}>
+                      Is payment ke baad bacha: <strong>{formatINR(leftoverFor(inv, sel))}</strong>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 4, cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!sel.wo?.on} onChange={(e) => setWo(inv.key, { on: e.target.checked })} />
+                      Bacha {formatINR(leftoverFor(inv, sel))} Credit Note se band karein
+                    </label>
+                    {sel.wo?.on && (
+                      <select style={{ ...styles.input, marginTop: 6, marginBottom: 0 }} value={sel.wo.reason} onChange={(e) => setWo(inv.key, { reason: e.target.value })}>
+                        {["Short payment", "CD", "Round-off", "Rate difference", "Damaged goods", "Other"].map((r) => (
+                          <option key={r}>{r}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -473,7 +518,8 @@ function CollectionForm({ data, editingCollection, onSave }) {
         <div style={{ ...styles.card, background: colors.bg, marginTop: 10 }}>
           <div style={{ fontSize: 13 }}>Total Cash: {formatINR(totalCash)}</div>
           <div style={{ fontSize: 13 }}>Total CD: {formatINR(totalCd)}</div>
-          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>Credit Applied: {formatINR(totalCash + totalCd)}</div>
+          {totalWriteOff > 0 && <div style={{ fontSize: 13 }}>Credit Note (bacha balance): {formatINR(totalWriteOff)}</div>}
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>Credit Applied: {formatINR(totalCash + totalCd + totalWriteOff)}</div>
         </div>
       )}
 

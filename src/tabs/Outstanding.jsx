@@ -27,6 +27,14 @@ export default function OutstandingTab({ data }) {
 
   const grandTotal = roundRupee(perBuyer.reduce((s, x) => s + x.invoices.reduce((s2, i) => s2 + i.balance, 0), 0));
 
+  const [showRec, setShowRec] = useState(false);
+  const recRows = showRec
+    ? data.buyers
+        .map((b) => ({ buyer: b, ...buyerReconciliation(b.id, data) }))
+        .filter((r) => r.outstanding !== 0 || r.ledger !== 0 || r.advance !== 0)
+    : [];
+  const recMismatch = recRows.filter((r) => r.diff !== 0).length;
+
   const millPending = millOutstandingSummary(data.indents, data.mills, data.collections, data.buyers, data.debitNotes, data.creditNotes);
   const millName = (id) => data.mills.find((m) => m.id === id)?.name || "—";
 
@@ -43,7 +51,7 @@ export default function OutstandingTab({ data }) {
               .map(
                 (i) => `<tr><td>${formatDate(i.invoiceDate)}</td><td>${i.invoiceNo || i.indentNumber}</td><td>${formatINR(
                   i.value
-                )}</td><td>${formatINR(i.paidTotal)}</td><td>${formatINR(i.balance)}</td><td>${i.days}</td></tr>`
+                )}</td><td>${formatINR(Math.max(i.value - i.balance, 0))}</td><td>${formatINR(i.balance)}</td><td>${i.days}</td></tr>`
               )
               .join("")}
           </tbody>
@@ -110,6 +118,41 @@ export default function OutstandingTab({ data }) {
             <div style={{ fontSize: 22, fontWeight: 800 }}>{formatINR(grandTotal)}</div>
           </div>
 
+          <div style={styles.card}>
+            <button style={styles.btnGhost} onClick={() => setShowRec((v) => !v)}>
+              {showRec ? "Hide" : "Show"} Ledger vs Outstanding check (all parties)
+            </button>
+            {showRec && (
+              <div style={{ overflowX: "auto", marginTop: 10 }}>
+                <div style={{ fontSize: 12, marginBottom: 6, color: recMismatch ? "#b91c1c" : "#15803d" }}>
+                  {recMismatch ? `⚠ ${recMismatch} party mein mismatch` : "✓ Sab parties Ledger se match"}
+                </div>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Party</th>
+                      <th style={styles.th}>Ledger Bal</th>
+                      <th style={styles.th}>Outstanding</th>
+                      <th style={styles.th}>Advance</th>
+                      <th style={styles.th}>Diff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recRows.map((r) => (
+                      <tr key={r.buyer.id} style={r.diff !== 0 ? { background: "#fee2e2" } : undefined}>
+                        <td style={styles.td}>{r.buyer.name}</td>
+                        <td style={styles.td}>{formatINR(r.ledger)}</td>
+                        <td style={styles.td}>{formatINR(r.outstanding)}</td>
+                        <td style={styles.td}>{r.advance ? formatINR(r.advance) : ""}</td>
+                        <td style={{ ...styles.td, fontWeight: 700 }}>{r.diff ? formatINR(r.diff) : "0"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {perBuyer.length === 0 && (
             <div style={{ ...styles.card, textAlign: "center", color: colors.textMuted }}>No outstanding invoices.</div>
           )}
@@ -143,7 +186,7 @@ export default function OutstandingTab({ data }) {
                           <td style={styles.td}>{formatDate(inv.invoiceDate)}</td>
                           <td style={styles.td}>{inv.invoiceNo || inv.indentNumber}</td>
                           <td style={styles.td}>{formatINR(inv.value)}</td>
-                          <td style={styles.td}>{formatINR(inv.paidTotal)}</td>
+                          <td style={styles.td}>{formatINR(Math.max(inv.value - inv.balance, 0))}</td>
                           <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(inv.balance)}</td>
                           <td style={styles.td}>{inv.days}</td>
                         </tr>
@@ -222,7 +265,7 @@ export default function OutstandingTab({ data }) {
                             <td style={styles.td}>{inv.invoiceNo || inv.indentNumber}</td>
                             <td style={styles.td}>{buyerNameById(data, inv.buyerId)}</td>
                             <td style={styles.td}>{formatINR(inv.value)}</td>
-                            <td style={styles.td}>{formatINR(inv.paidTotal)}</td>
+                            <td style={styles.td}>{formatINR(Math.max(inv.value - inv.balance, 0))}</td>
                             <td style={{ ...styles.td, fontWeight: 700 }}>{formatINR(inv.balance)}</td>
                             <td style={styles.td}>{inv.days}</td>
                           </tr>
